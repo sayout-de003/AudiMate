@@ -1,24 +1,33 @@
-from .base import AuditRule
+from .base import BaseRule, RuleResult
 
-class BranchProtectionRule(AuditRule):
+class BranchProtectionRule(BaseRule):
     """
     Checks if the default branch has protection enabled.
     """
     
-    def evaluate(self, data: dict) -> tuple[bool, dict]:
+    def evaluate(self, data: dict) -> RuleResult:
         # 'data' here is the response from get_branch_protection
         
         if data is None:
-            return False, {"reason": "No branch protection rules found."}
+            return RuleResult(
+                status=False,
+                details="No branch protection rules found.",
+                compliance_mapping="N/A"
+            )
 
         # Check specific requirements (example: require PR reviews)
         required_reviews = data.get("required_pull_request_reviews", {})
         dismiss_stale = required_reviews.get("dismiss_stale_reviews", False)
 
         if not dismiss_stale:
-             return False, {
-                 "reason": "Stale reviews are not set to dismiss automatically.",
-                 "raw_data": required_reviews
-             }
+             return RuleResult(
+                 status=False,
+                 details="Stale reviews are not set to dismiss automatically.",
+                 compliance_mapping="N/A"
+             )
 
-        return True, {"message": "Branch protection is active and secure."}
+        return RuleResult(
+            status=True, 
+            details="Branch protection is active and secure.",
+            compliance_mapping="N/A"
+        )

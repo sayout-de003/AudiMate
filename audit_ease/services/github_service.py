@@ -278,6 +278,57 @@ class GitHubService:
             logger.error(f"Error checking secret scanning for {repo_full_name}: {e}")
             raise GitHubServiceError(f"Failed to check secret scanning: {e}")
 
+    def get_org_details(self, org: str) -> Dict[str, Any]:
+        """
+        Fetches detailed organization metadata.
+        """
+        url = f"{self.BASE_URL}/orgs/{org}"
+        
+        try:
+            response = self.session.get(url, timeout=self.TIMEOUT)
+            if response.status_code == 404:
+                return {}
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to fetch org details for {org}: {e}")
+            raise GitHubServiceError(f"Failed to fetch org details: {e}")
+
+    def get_repo_file_contents(self, repo_full_name: str, path: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetches file contents or metadata. Used to check if a file exists.
+        Returns None if file does not exist (404).
+        """
+        url = f"{self.BASE_URL}/repos/{repo_full_name}/contents/{path}"
+        try:
+            response = self.session.get(url, timeout=self.TIMEOUT)
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            # If it's a 404 not caught above (e.g. from raise_for_status if needed, but handled)
+            logger.error(f"Failed to fetch file {path} for {repo_full_name}: {e}")
+            raise GitHubServiceError(f"Failed to fetch file contents: {e}")
+
+    def get_repo_tree(self, repo_full_name: str, branch: str = "main", recursive: bool = True) -> list:
+        """
+        Fetches thegit tree for a repo. Useful for finding files like CODEOWNERS in multiple locations.
+        """
+        url = f"{self.BASE_URL}/repos/{repo_full_name}/git/trees/{branch}?recursive={'1' if recursive else '0'}"
+        try:
+            response = self.session.get(url, timeout=self.TIMEOUT)
+            if response.status_code == 404:
+                 # Branch might not exist or empty repo
+                 return []
+            response.raise_for_status()
+            data = response.json()
+            return data.get('tree', [])
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Failed to fetch tree for {repo_full_name}: {e}")
+            # Non-critical, return empty list to result in Fail for existence checks
+            return []
+
 
 
 # import requests

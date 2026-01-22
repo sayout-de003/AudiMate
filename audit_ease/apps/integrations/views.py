@@ -122,6 +122,9 @@ class GithubCallbackView(APIView):
         })
 
 
+from drf_spectacular.utils import extend_schema
+
+@extend_schema(auth=[], summary="GitHub Webhook Listener")
 class GitHubWebhookView(APIView):
     """
     POST /api/webhooks/github/

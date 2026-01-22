@@ -14,7 +14,15 @@ from .models import Audit, Evidence, Question
 from services.github_service import GitHubService, GitHubServiceError
 from services.aws_service import AwsService, AwsServiceError
 from services.encryption_manager import get_key_manager
+from services.encryption_manager import get_key_manager
 from apps.integrations.models import Integration
+from .rules.cis_benchmark import (
+    EnforceMFA, StaleAdminAccess, ExcessiveOwners,
+    SecretScanningEnabled, DependabotEnabled, PrivateRepoVisibility,
+    EnforceSignedCommits, BranchProtectionMain, RequireCodeReviews, 
+    DismissStaleReviews, RequireLinearHistory,
+    CodeOwnersExist
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +41,19 @@ COMPLIANCE_CHECK_MAP = {
     'security_groups_22': 'check_aws_security_groups',
     'https_enforced': 'check_https_enforced',
     'admin_mfa': 'check_admin_mfa',
+    # CIS Benchmark Mappings
+    'cis_1_1_mfa': 'check_cis_1_1_mfa',
+    'cis_1_2_stale_admins': 'check_cis_1_2_stale_admins',
+    'cis_1_3_excessive_owners': 'check_cis_1_3_excessive_owners',
+    'cis_2_1_secret_scanning': 'check_cis_2_1_secret_scanning',
+    'cis_2_2_dependabot': 'check_cis_2_2_dependabot',
+    'cis_2_5_private_repo': 'check_cis_2_5_private_repo',
+    'cis_3_1_signed_commits': 'check_cis_3_1_signed_commits',
+    'cis_4_1_branch_protection': 'check_cis_4_1_branch_protection',
+    'cis_4_2_code_reviews': 'check_cis_4_2_code_reviews',
+    'cis_4_3_dismiss_stale': 'check_cis_4_3_dismiss_stale',
+    'cis_4_5_linear_history': 'check_cis_4_5_linear_history',
+    'cis_5_1_codeowners': 'check_cis_5_1_codeowners',
 }
 
 class AuditExecutor:
@@ -267,6 +288,145 @@ class AuditExecutor:
                 {'error': str(e), 'check': 'github_org_members'},
                 f"Member check failed: {str(e)}"
             )
+
+    # CIS BENCHMARK PLUMBING IMPLEMENTATIONS
+
+    def _run_rule(self, rule_class, data_fetcher, error_context: str) -> tuple:
+        """
+        Generic helper to run a Rule class.
+        """
+        try:
+            # 1. Fetch Data
+            data = data_fetcher()
+            
+            # 2. Evaluate Rule
+            rule = rule_class()
+            result = rule.evaluate(data)
+            
+            # 3. Return Tuple (Status, Data, Comment)
+            status = 'PASS' if result.status else 'FAIL'
+            
+            # Enrich data with compliance info
+            evidence_data = {
+                'details': result.details,
+                'compliance_standard': rule.compliance_standard,
+                'raw_source': data if isinstance(data, (dict, list)) else str(data)
+            }
+            
+            return (status, evidence_data, result.details)
+            
+        except GitHubServiceError as e:
+            return ('FAIL', {'error': str(e)}, f"{error_context} failed: {str(e)}")
+        except Exception as e:
+            logger.exception(f"Unexpected error in {error_context}: {e}")
+            return ('ERROR', {'error': str(e)}, f"{error_context} error: {str(e)}")
+
+    def check_cis_1_1_mfa(self) -> tuple:
+        service = self._get_github_service()
+        return self._run_rule(
+            EnforceMFA,
+            lambda: service.get_org_details(service.integration.identifier),
+            "CIS 1.1 MFA Check"
+        )
+
+    def check_cis_1_2_stale_admins(self) -> tuple:
+        service = self._get_github_service()
+        return self._run_rule(
+            StaleAdminAccess,
+            lambda: service.get_org_members(service.integration.identifier),
+            "CIS 1.2 Stale Admin Check"
+        )
+
+    def check_cis_1_3_excessive_owners(self) -> tuple:
+        service = self._get_github_service()
+        return self._run_rule(
+            ExcessiveOwners,
+            lambda: service.get_org_members(service.integration.identifier),
+            "CIS 1.3 Excessive Owners Check"
+        )
+
+    def check_cis_2_1_secret_scanning(self) -> tuple:
+        service = self._get_github_service()
+        repo = service.integration.meta_data.get('repo_name')
+        return self._run_rule(
+            SecretScanningEnabled,
+            lambda: service.get_repo_details(repo) if repo else {},
+            "CIS 2.1 Secret Scanning Check"
+        )
+
+    def check_cis_2_2_dependabot(self) -> tuple:
+        service = self._get_github_service()
+        repo = service.integration.meta_data.get('repo_name')
+        return self._run_rule(
+            DependabotEnabled,
+            lambda: service.get_repo_details(repo) if repo else {},
+            "CIS 2.2 Dependabot Check"
+        )
+
+    def check_cis_2_5_private_repo(self) -> tuple:
+        service = self._get_github_service()
+        repo = service.integration.meta_data.get('repo_name')
+        return self._run_rule(
+            PrivateRepoVisibility,
+            lambda: service.get_repo_details(repo) if repo else {},
+            "CIS 2.5 Private Repo Check"
+        )
+
+    def check_cis_3_1_signed_commits(self) -> tuple:
+        service = self._get_github_service()
+        repo = service.integration.meta_data.get('repo_name')
+        # Note: get_branch_protection returns dict or None (if 404/not protected)
+        return self._run_rule(
+            EnforceSignedCommits,
+            lambda: service.get_branch_protection(repo, 'main') if repo else None,
+            "CIS 3.1 Signed Commits Check"
+        )
+
+    def check_cis_4_1_branch_protection(self) -> tuple:
+        service = self._get_github_service()
+        repo = service.integration.meta_data.get('repo_name')
+        return self._run_rule(
+            BranchProtectionMain,
+            lambda: service.get_branch_protection(repo, 'main') if repo else None,
+            "CIS 4.1 Branch Protection Check"
+        )
+
+    def check_cis_4_2_code_reviews(self) -> tuple:
+        service = self._get_github_service()
+        repo = service.integration.meta_data.get('repo_name')
+        return self._run_rule(
+            RequireCodeReviews,
+            lambda: service.get_branch_protection(repo, 'main') if repo else None,
+            "CIS 4.2 Code Reviews Check"
+        )
+
+    def check_cis_4_3_dismiss_stale(self) -> tuple:
+        service = self._get_github_service()
+        repo = service.integration.meta_data.get('repo_name')
+        return self._run_rule(
+            DismissStaleReviews,
+            lambda: service.get_branch_protection(repo, 'main') if repo else None,
+            "CIS 4.3 Dismiss Stale Check"
+        )
+
+    def check_cis_4_5_linear_history(self) -> tuple:
+        service = self._get_github_service()
+        repo = service.integration.meta_data.get('repo_name')
+        return self._run_rule(
+            RequireLinearHistory,
+            lambda: service.get_branch_protection(repo, 'main') if repo else None,
+            "CIS 4.5 Linear History Check"
+        )
+
+    def check_cis_5_1_codeowners(self) -> tuple:
+        service = self._get_github_service()
+        repo = service.integration.meta_data.get('repo_name')
+        # Use get_repo_tree to scan for files
+        return self._run_rule(
+            CodeOwnersExist,
+            lambda: service.get_repo_tree(repo, 'main', recursive=True) if repo else [],
+            "CIS 5.1 CODEOWNERS Check"
+        )
 
     # AWS COMPLIANCE CHECK IMPLEMENTATIONS
 

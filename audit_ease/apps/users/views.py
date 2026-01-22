@@ -12,6 +12,9 @@ from .serializers import UserRegistrationSerializer
 
 User = get_user_model()
 
+from drf_spectacular.utils import extend_schema
+
+@extend_schema(auth=[], summary="Register a new user")
 class RegisterUserView(generics.CreateAPIView):
     """
     Endpoint for new users to register.
