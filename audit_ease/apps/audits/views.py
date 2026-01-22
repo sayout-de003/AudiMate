@@ -1,0 +1,462 @@
+"""
+Audit API Views with Industry-Grade Security
+
+All endpoints enforce:
+- Organization isolation (IsSameOrganization)
+- Authentication (IsAuthenticated)
+- Proper RBAC from membership roles
+- Audit logging for compliance
+
+No endpoint exposes data from other organizations.
+"""
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework import permissions
+from apps.organizations.permissions import IsSameOrganization
+from .models import Audit, Evidence
+from .serializers import AuditSerializer, EvidenceSerializer
+from .logic import run_audit_sync
+from django.db.models import Count, Q
+from django.utils import timezone
+from django_ratelimit.decorators import ratelimit
+from django.utils.decorators import method_decorator
+from django.conf import settings
+from datetime import timedelta
+import logging
+import uuid
+import threading
+
+logger = logging.getLogger(__name__)
+
+
+def run_audit_background(audit_id: str, user_id: int) -> None:
+    """
+    Background worker function to execute audit checks asynchronously.
+    
+    Runs in a separate thread from the main request handler.
+    
+    Args:
+        audit_id: UUID of the audit to execute
+        user_id: ID of the user who triggered the audit
+    
+    Lifecycle:
+        1. Fetches the Audit object
+        2. Sets status to 'RUNNING'
+        3. Executes compliance checks via run_audit_sync
+        4. Updates status to 'COMPLETED' on success or 'FAILED' on error
+    """
+    try:
+        # Fetch the audit
+        audit = Audit.objects.get(id=audit_id)
+        
+        logger.info(
+            f"Background audit worker started for audit {audit.id} "
+            f"(organization: {audit.organization.name}, user: {user_id})"
+        )
+        
+        # Mark as running
+        audit.status = 'RUNNING'
+        audit.save(update_fields=['status'])
+        
+        # Execute all compliance checks
+        check_count = run_audit_sync(audit_id)
+        
+        # Refresh to ensure we have the latest status from run_audit_sync
+        audit.refresh_from_db()
+        
+        logger.info(
+            f"Background audit worker completed for audit {audit.id}: "
+            f"{check_count} checks executed, status={audit.status}"
+        )
+        
+    except Audit.DoesNotExist:
+        logger.error(f"Audit {audit_id} not found during background execution")
+    except Exception as e:
+        logger.exception(f"Background audit worker failed for audit {audit_id}: {e}")
+        try:
+            audit = Audit.objects.get(id=audit_id)
+            audit.status = 'FAILED'
+            audit.save(update_fields=['status'])
+        except Exception as inner_e:
+            logger.error(f"Could not update audit status to FAILED: {inner_e}")
+
+
+@method_decorator(
+    ratelimit(key='user', rate=lambda r: settings.AUDIT_RATE_LIMIT, method='POST', block=True),
+    name='dispatch'
+)
+class AuditStartView(APIView):
+    """
+    POST /api/v1/audits/start/
+    
+    Starts a new security audit for the requesting user's organization.
+    Rate Limited: 5 audits per hour per user (configurable via AUDIT_RATE_LIMIT setting).
+    
+    SECURITY:
+    - IsSameOrganization: User can only audit their own organization
+    - IsAuthenticated: User must be logged in
+    - Rate Limiting: 5 audits per hour to prevent API abuse
+    - Audit is linked to organization and triggering user
+    """
+    permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
+
+    def post(self, request):
+        """
+        Create and execute a new audit for the user's organization.
+        
+        Rate Limited: Controlled by AUDIT_RATE_LIMIT setting via ratelimit decorator.
+        
+        Returns HTTP 202 (Accepted) immediately while background worker executes checks.
+        Frontend should poll GET /api/v1/audits/{audit_id}/ to check for completion.
+        """
+        try:
+            # Get user's organization from context (set by OrgContextMiddleware)
+            organization = request.user.get_organization()
+            if not organization:
+                return Response(
+                    {'error': 'User is not a member of any organization'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Create audit record with PENDING status
+            audit = Audit.objects.create(
+                organization=organization,
+                triggered_by=request.user,
+                status='PENDING'
+            )
+            
+            logger.info(
+                f"Audit {audit.id} created for organization {organization.name} by {request.user.email}. "
+                f"Status: PENDING. Launching background worker thread."
+            )
+            
+            # Launch background worker thread
+            task = threading.Thread(
+                target=run_audit_background,
+                args=(str(audit.id), request.user.id),
+                daemon=False  # Don't let thread be a daemon so it completes even if app restarts
+            )
+            task.start()
+            
+            # Return 202 Accepted immediately
+            return Response(
+                {
+                    'message': 'Audit started in background',
+                    'audit_id': str(audit.id),
+                    'status': 'PENDING',
+                    'organization': organization.name,
+                    'triggered_by': request.user.email,
+                    'created_at': audit.created_at.isoformat(),
+                    'note': 'Poll GET /api/v1/audits/{audit_id}/ every 3 seconds to check for completion'
+                },
+                status=status.HTTP_202_ACCEPTED
+            )
+            
+        except Exception as e:
+            logger.exception(f"Error starting audit: {e}")
+            return Response(
+                {'error': 'Failed to start audit. Please check logs for details.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class AuditDetailView(APIView):
+    """
+    GET /api/v1/audits/{audit_id}/
+    
+    Retrieve details of a specific audit.
+    
+    SECURITY: Can only access audits belonging to user's organization.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
+    
+    def get(self, request, audit_id):
+        """Get audit details."""
+        try:
+            # Verify audit exists and belongs to user's organization
+            organization = request.user.get_organization()
+            
+            audit = Audit.objects.get(
+                id=audit_id,
+                organization=organization
+            )
+            
+            serializer = AuditSerializer(audit)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except Audit.DoesNotExist:
+            return Response(
+                {'error': 'Audit not found or access denied'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+
+class AuditEvidenceView(APIView):
+    """
+    GET /api/v1/audits/{audit_id}/evidence/
+    
+    Retrieve all evidence/findings from an audit.
+    
+    SECURITY: Can only access evidence from audits belonging to user's organization.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
+    
+    def get(self, request, audit_id):
+        """Get all evidence for an audit."""
+        try:
+            organization = request.user.get_organization()
+            
+            audit = Audit.objects.get(
+                id=audit_id,
+                organization=organization
+            )
+            
+            evidence_list = Evidence.objects.filter(audit=audit).select_related('question')
+            serializer = EvidenceSerializer(evidence_list, many=True)
+            
+            return Response(
+                {
+                    'audit_id': str(audit.id),
+                    'organization': audit.organization.name,
+                    'status': audit.status,
+                    'evidence_count': evidence_list.count(),
+                    'evidence': serializer.data
+                },
+                status=status.HTTP_200_OK
+            )
+            
+        except Audit.DoesNotExist:
+            return Response(
+                {'error': 'Audit not found or access denied'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+
+class AuditListView(APIView):
+    """
+    GET /api/v1/audits/
+    
+    List all audits for the user's organization.
+    
+    SECURITY: Automatically filters to organization's audits only.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
+    
+    def get(self, request):
+        """Get all audits for organization."""
+        organization = request.user.get_organization()
+        if not organization:
+            return Response(
+                {'error': 'User is not a member of any organization'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Query optimization: select_related for foreign keys
+        audits = Audit.objects.filter(
+            organization=organization
+        ).select_related('organization', 'triggered_by').order_by('-created_at')
+        
+        serializer = AuditSerializer(audits, many=True)
+        return Response(
+            {
+                'organization': organization.name,
+                'audit_count': audits.count(),
+                'audits': serializer.data
+            },
+            status=status.HTTP_200_OK
+        )
+
+
+class DashboardSummaryView(APIView):
+    """
+    GET /api/v1/audits/dashboard/summary/
+    
+    Executive dashboard with aggregated security metrics for the organization.
+    
+    Returns:
+    - Total Audits Run (Last 30 days)
+    - Current Pass Rate %
+    - Open Issues by Severity (Critical/High/Medium)
+    - Top Failing Repos/Resources
+    
+    SECURITY: Organization-isolated using IsSameOrganization permission.
+    PERFORMANCE: Uses Django aggregates for efficient database queries.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
+    
+    def get(self, request):
+        """Get dashboard summary statistics."""
+        try:
+            organization = request.user.get_organization()
+            if not organization:
+                return Response(
+                    {'error': 'User is not a member of any organization'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Time range: last 30 days
+            thirty_days_ago = timezone.now() - timedelta(days=30)
+            
+            # Query audits for this organization in the last 30 days
+            audits_30d = Audit.objects.filter(
+                organization=organization,
+                created_at__gte=thirty_days_ago
+            )
+            
+            # 1. Total Audits Run (Last 30 days)
+            total_audits = audits_30d.count()
+            completed_audits = audits_30d.filter(status='COMPLETED').count()
+            pending_audits = audits_30d.filter(status='PENDING').count()
+            failed_audits = audits_30d.filter(status='FAILED').count()
+            
+            # 2. Current Pass Rate %
+            # Get all evidence from audits in last 30 days
+            evidence_30d = Evidence.objects.filter(
+                audit__organization=organization,
+                audit__created_at__gte=thirty_days_ago
+            )
+            
+            passed_evidence = evidence_30d.filter(status='PASS').count()
+            failed_evidence = evidence_30d.filter(status='FAIL').count()
+            error_evidence = evidence_30d.filter(status='ERROR').count()
+            total_evidence = evidence_30d.count()
+            
+            # Calculate pass rate
+            if total_evidence > 0:
+                pass_rate = round((passed_evidence / total_evidence) * 100, 2)
+            else:
+                pass_rate = 0
+            
+            # 3. Open Issues by Severity
+            # Join Evidence with Question to get severity
+            severity_breakdown = Evidence.objects.filter(
+                status='FAIL',
+                audit__organization=organization,
+                audit__created_at__gte=thirty_days_ago
+            ).values('question__severity').annotate(
+                count=Count('id')
+            ).order_by('question__severity')
+            
+            issues_by_severity = {
+                'CRITICAL': 0,
+                'HIGH': 0,
+                'MEDIUM': 0,
+                'LOW': 0,
+            }
+            
+            for item in severity_breakdown:
+                severity = item.get('question__severity', 'LOW')
+                issues_by_severity[severity] = item.get('count', 0)
+            
+            # 4. Top Failing Resources
+            # Get the most frequently failing questions
+            top_failing_questions = Evidence.objects.filter(
+                status='FAIL',
+                audit__organization=organization,
+                audit__created_at__gte=thirty_days_ago
+            ).values('question__key', 'question__title', 'question__severity').annotate(
+                failure_count=Count('id')
+            ).order_by('-failure_count')[:5]
+            
+            top_failing = [
+                {
+                    'question_key': item['question__key'],
+                    'title': item['question__title'],
+                    'severity': item['question__severity'],
+                    'failures': item['failure_count']
+                }
+                for item in top_failing_questions
+            ]
+            
+            # 5. Audit Status Trend (last 30 days by status)
+            status_distribution = audits_30d.values('status').annotate(
+                count=Count('id')
+            )
+            
+            status_trend = {
+                'PENDING': 0,
+                'RUNNING': 0,
+                'COMPLETED': 0,
+                'FAILED': 0,
+            }
+            
+            for item in status_distribution:
+                status_trend[item['status']] = item['count']
+            
+            # 6. Recent Audit Timeline
+            recent_audits = Audit.objects.filter(
+                organization=organization,
+                created_at__gte=thirty_days_ago
+            ).order_by('-created_at')[:10].values(
+                'id', 'status', 'created_at', 'completed_at'
+            )
+            
+            recent_timeline = [
+                {
+                    'audit_id': str(audit['id']),
+                    'status': audit['status'],
+                    'created_at': audit['created_at'].isoformat(),
+                    'completed_at': audit['completed_at'].isoformat() if audit['completed_at'] else None,
+                    'duration_seconds': (
+                        (audit['completed_at'] - audit['created_at']).total_seconds()
+                        if audit['completed_at'] else None
+                    )
+                }
+                for audit in recent_audits
+            ]
+            
+            # Compile the dashboard response
+            dashboard_data = {
+                'organization': organization.name,
+                'organization_id': str(organization.id),
+                'time_period': {
+                    'label': 'Last 30 days',
+                    'start_date': thirty_days_ago.isoformat(),
+                    'end_date': timezone.now().isoformat()
+                },
+                'audit_summary': {
+                    'total_audits': total_audits,
+                    'completed': completed_audits,
+                    'pending': pending_audits,
+                    'failed': failed_audits,
+                    'status_trend': status_trend
+                },
+                'compliance_metrics': {
+                    'pass_rate_percent': pass_rate,
+                    'total_checks': total_evidence,
+                    'passed': passed_evidence,
+                    'failed': failed_evidence,
+                    'errors': error_evidence
+                },
+                'issues': {
+                    'by_severity': issues_by_severity,
+                    'total_open_issues': sum(issues_by_severity.values()),
+                    'top_failing_checks': top_failing
+                },
+                'recent_audits': recent_timeline
+            }
+            
+            return Response(dashboard_data, status=status.HTTP_200_OK)
+        
+        except Exception as e:
+            logger.exception(f"Error generating dashboard summary: {e}")
+            return Response(
+                {'error': 'Failed to generate dashboard summary'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+
+#     def get(self, request, task_id):
+#         # Check status of the Celery task
+#         task_result = AsyncResult(task_id)
+        
+#         response_data = {
+#             "task_id": task_id,
+#             "status": task_result.status,
+#             "result": task_result.result if task_result.ready() else None
+#         }
+        
+#         return Response(response_data)

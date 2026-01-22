@@ -1,0 +1,301 @@
+# ============================================================================
+# Django & Python
+# ============================================================================
+
+# Python
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+aud/
+
+# Poetry
+poetry.lock
+dist/
+build/
+
+# ============================================================================
+# Django Specific
+# ============================================================================
+
+# Database
+db.sqlite3
+db.sqlite3-journal
+*.db
+
+# Django migrations (don't ignore, but keep this section for reference)
+# migrations/ should be tracked
+
+# Media & static files
+/media
+/staticfiles
+/static_root
+/uploads
+
+# Django cache
+.webassets-cache
+
+# Celery
+celerybeat-schedule
+
+# ============================================================================
+# IDE & Editors
+# ============================================================================
+
+# VS Code
+.vscode/
+.vscode
+*.code-workspace
+
+# PyCharm
+.idea/
+.idea
+*.iml
+*.iws
+*.ipr
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+.vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# Nano
+.nano_history
+
+# ============================================================================
+# Environment & Secrets
+# ============================================================================
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.production.local
+.env.test.local
+*.pem
+*.key
+
+# Django secret key
+secret_key.txt
+
+# API Keys & credentials
+credentials.json
+.aws/
+.credentials
+
+# ============================================================================
+# OS Specific
+# ============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+*.swp
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+*.lnk
+
+# Linux
+.directory
+
+# ============================================================================
+# Logs & Debugging
+# ============================================================================
+
+# Logs
+*.log
+logs/
+*.log.*
+debug.log
+
+# Django logs
+django.log
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# ============================================================================
+# Testing & Temporary Files
+# ============================================================================
+
+# Pytest
+.pytest_cache/
+.tox/
+
+# Test coverage
+htmlcov/
+.coverage
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+
+# ============================================================================
+# Node (if using frontend tooling)
+# ============================================================================
+
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+
+# ============================================================================
+# Documentation
+# ============================================================================
+
+# Build artifacts
+site/
+docs/_build/
+.sphinx/
+
+# ============================================================================
+# IDE Run Configurations
+# ============================================================================
+
+# PyCharm run configurations
+.idea/runConfigurations/
+
+# Debugger
+.debuginfo
+
+# ============================================================================
+# Celery & Task Queue
+# ============================================================================
+
+celerybeat-schedule
+dump.rdb
+
+# ============================================================================
+# Project Specific
+# ============================================================================
+
+# Django management commands logs
+command_logs/
+
+# Backup files
+*.backup
+backup/
+backups/
+
+# Temporary data files
+temp/
+tmp/
+temporary/
+
+# IDE settings that shouldn't be shared
+.editorconfig.local
+
+# Local development overrides
+settings_local.py
+local_settings.py
+
+# ============================================================================
+# Build & Distribution
+# ============================================================================
+
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ============================================================================
+# Docker (if applicable)
+# ============================================================================
+
+# Docker
+docker-compose.override.yml
+.dockerignore
+
+# ============================================================================
+# Misc
+# ============================================================================
+
+# System files
+._*
+.DS_Store
+
+# IDE metadata
+.idea/
+.vscode/
+
+# Shell configuration
+.bash_history
+.zsh_history
+.fish_history
+
+# Keep some patterns
+!.gitkeep
+!.env.example
+!migrations/
+
+# ============================================================================
+# IMPORTANT: Files to never commit
+# ============================================================================
+
+# Secrets
+.env
+*.pem
+*.key
+credentials.json
+secrets.yml
+
+# Database with production data
+db.sqlite3
+
+# IDE files with local settings
+.vscode/settings.json
+.idea/workspace.xml

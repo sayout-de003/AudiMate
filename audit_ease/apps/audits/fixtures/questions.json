@@ -1,0 +1,102 @@
+[
+  {
+    "model": "audits.question",
+    "pk": 1,
+    "fields": {
+      "key": "github_2fa",
+      "title": "2FA Enforced on Organization",
+      "description": "Checks if Two-Factor Authentication is required for all members.",
+      "severity": "CRITICAL"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 2,
+    "fields": {
+      "key": "github_branch_protection",
+      "title": "Main Branch Protection",
+      "description": "Ensures the main/master branch has protection rules enabled.",
+      "severity": "HIGH"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 3,
+    "fields": {
+      "key": "aws_root_mfa",
+      "title": "AWS Root Account MFA",
+      "description": "Verifies that the root account has MFA enabled.",
+      "severity": "CRITICAL"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 4,
+    "fields": {
+      "key": "s3_public_access",
+      "title": "S3 Buckets Public Access",
+      "description": "Checks for S3 buckets that are open to the public internet.",
+      "severity": "HIGH"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 5,
+    "fields": {
+      "key": "db_encryption",
+      "title": "Database Encryption at Rest",
+      "description": "Ensures RDS/Database instances are encrypted.",
+      "severity": "HIGH"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 6,
+    "fields": {
+      "key": "unused_iam_users",
+      "title": "Unused IAM Users",
+      "description": "Flags IAM users who haven't logged in for 90 days.",
+      "severity": "MEDIUM"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 7,
+    "fields": {
+      "key": "security_groups_22",
+      "title": "Open SSH Port (22)",
+      "description": "Checks for Security Groups allowing 0.0.0.0/0 on port 22.",
+      "severity": "HIGH"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 8,
+    "fields": {
+      "key": "cloudtrail_enabled",
+      "title": "CloudTrail Logging Enabled",
+      "description": "Verifies that CloudTrail is active in all regions.",
+      "severity": "MEDIUM"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 9,
+    "fields": {
+      "key": "https_enforced",
+      "title": "HTTPS Enforced",
+      "description": "Checks if load balancers redirect HTTP to HTTPS.",
+      "severity": "MEDIUM"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 10,
+    "fields": {
+      "key": "admin_mfa",
+      "title": "Admin Access MFA",
+      "description": "Ensures admin panels are behind MFA.",
+      "severity": "LOW"
+    }
+  }
+]
