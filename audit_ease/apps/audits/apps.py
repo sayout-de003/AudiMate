@@ -6,3 +6,7 @@ class AuditsConfig(AppConfig):
     name = 'apps.audits'
     label = 'audits'
 
+    def ready(self):
+        from . import audit_registry
+        audit_registry.register_models()
+

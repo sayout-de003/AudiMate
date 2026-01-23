@@ -21,6 +21,10 @@ from django.db import transaction
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
+from django.views.decorators.cache import cache_page
+from django.views.generic import ListView
+from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from auditlog.models import LogEntry
 import logging
 
 from .models import Organization, Membership, OrganizationInvite
@@ -528,3 +532,49 @@ def check_invite_validity(request):
         'role': invite.role,
         'expires_at': invite.expires_at.isoformat(),
     })
+
+
+class ActivityLogView(LoginRequiredMixin, UserPassesTestMixin, ListView):
+    """
+    View for Customer Admins to see audit logs for their organization.
+    
+    Security:
+    - Login Required
+    - Must be Admin of the Organization
+    - Scoped to only show logs from actors in the same organization
+    """
+    model = LogEntry
+    template_name = 'settings/activity_log.html'
+    context_object_name = 'logs'
+    paginate_by = 25
+    
+    def test_func(self):
+        """Verify user is an Admin of their organization."""
+        org = self.request.user.get_organization()
+        if not org:
+            return False
+            
+        membership = Membership.objects.filter(
+            user=self.request.user, 
+            organization=org
+        ).first()
+        
+        return membership and membership.is_admin()
+        
+    def get_queryset(self):
+        """
+        Filter logs to show only actions by members of the same organization.
+        """
+        user = self.request.user
+        org = user.get_organization()
+        
+        if not org:
+            return LogEntry.objects.none()
+            
+        # We want to see what employees (members) of this org did.
+        # So we filter LogEntries where the actor is in this org.
+        qs = LogEntry.objects.filter(
+            actor__memberships__organization=org
+        ).select_related('actor', 'content_type').order_by('-timestamp')
+        
+        return qs

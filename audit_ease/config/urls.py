@@ -9,6 +9,12 @@ from drf_spectacular.views import (
     SpectacularRedocView,
 )
 
+from django.contrib.admin.views.decorators import staff_member_required
+
+@staff_member_required
+def trigger_error(request):
+    division_by_zero = 1 / 0
+
 urlpatterns = [
     path("admin/", admin.site.urls),
 
@@ -36,6 +42,10 @@ urlpatterns = [
     path("api/v1/audits/", include("apps.audits.urls")),
     path("api/v1/reports/", include("apps.reports.urls")),
     path("api/v1/billing/", include("apps.billing.urls")),
+    path("debug-sentry/", trigger_error),
+
+    # Frontend Views
+    path("settings/audit-log/", include("apps.organizations.urls_frontend")),
 ]
 
 

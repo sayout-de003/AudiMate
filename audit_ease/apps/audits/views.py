@@ -15,8 +15,9 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework import permissions
 from apps.organizations.permissions import IsSameOrganization
-from .models import Audit, Evidence
-from .serializers import AuditSerializer, EvidenceSerializer
+from .models import Audit, Evidence, AuditSnapshot
+from .serializers import AuditSerializer, EvidenceSerializer, AuditSnapshotSerializer, AuditSnapshotCreateSerializer, AuditSnapshotDetailSerializer
+from .services import create_audit_snapshot
 from .logic import run_audit_sync
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -459,4 +460,72 @@ class DashboardSummaryView(APIView):
 #             "result": task_result.result if task_result.ready() else None
 #         }
         
-#         return Response(response_data)
+
+class AuditSnapshotCreateView(APIView):
+    """
+    POST /api/v1/audits/{audit_id}/snapshots/
+    
+    Trigger creation of a new immutable snapshot.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
+    
+    def post(self, request, audit_id):
+        try:
+            organization = request.user.get_organization()
+            
+            # Verify audit exists and belongs to user's organization before proceeding
+            if not Audit.objects.filter(id=audit_id, organization=organization).exists():
+                 return Response({'error': 'Audit not found'}, status=status.HTTP_404_NOT_FOUND)
+
+            serializer = AuditSnapshotCreateSerializer(data=request.data)
+            if serializer.is_valid():
+                snapshot = create_audit_snapshot(
+                    audit_id=audit_id, 
+                    user=request.user,
+                    name=serializer.validated_data.get('name')
+                )
+                
+                return Response(
+                    AuditSnapshotSerializer(snapshot).data,
+                    status=status.HTTP_201_CREATED
+                )
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            logger.exception(f"Snapshot creation failed: {e}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class AuditSnapshotListView(APIView):
+    """
+    GET /api/v1/audits/{audit_id}/snapshots/
+    List all snapshots for an audit.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
+    
+    def get(self, request, audit_id):
+        try:
+             organization = request.user.get_organization()
+             audit = Audit.objects.get(id=audit_id, organization=organization)
+             
+             snapshots = AuditSnapshot.objects.filter(audit=audit)
+             serializer = AuditSnapshotSerializer(snapshots, many=True)
+             return Response(serializer.data)
+        except Audit.DoesNotExist:
+             return Response({'error': 'Audit not found'}, status=status.HTTP_404_NOT_FOUND)
+
+class AuditSnapshotDetailView(APIView):
+    """
+    GET /api/v1/audits/snapshots/{pk}/
+    Retrieve a specific snapshot with full data.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
+    
+    def get(self, request, pk):
+        try:
+            organization = request.user.get_organization()
+            snapshot = AuditSnapshot.objects.get(pk=pk, organization=organization)
+            
+            serializer = AuditSnapshotDetailSerializer(snapshot)
+            return Response(serializer.data)
+        except AuditSnapshot.DoesNotExist:
+            return Response({'error': 'Snapshot not found'}, status=status.HTTP_404_NOT_FOUND)

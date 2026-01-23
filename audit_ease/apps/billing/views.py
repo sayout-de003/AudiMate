@@ -23,6 +23,7 @@ from django.utils import timezone
 from apps.organizations.models import Organization
 from apps.organizations.permissions import IsSameOrganization, IsOrgAdmin
 from .serializers import CreateCheckoutSessionSerializer
+from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,26 @@ class BillingViewSet(viewsets.ViewSet):
     """
     permission_classes = [IsAuthenticated, IsSameOrganization]
 
+    @extend_schema(
+        summary="Create Stripe Checkout Session",
+        description="Creates a Stripe Checkout Session for a subscription. Returns a URL to redirect the user to Stripe.",
+        responses={
+            200: OpenApiResponse(
+                description="Checkout session created successfully",
+                examples=[
+                    OpenApiExample(
+                        'Success Response',
+                        value={
+                            'checkout_url': 'https://checkout.stripe.com/pay/cs_test_a1b2c3...',
+                            'session_id': 'cs_test_a1b2c3...'
+                        }
+                    )
+                ]
+            ),
+            403: OpenApiResponse(description="User does not have access to this organization"),
+            404: OpenApiResponse(description="Organization not found")
+        }
+    )
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def checkout_session(self, request):
         """

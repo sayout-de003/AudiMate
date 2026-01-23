@@ -9,7 +9,7 @@ Routes for:
 """
 
 from django.urls import path, include
-from rest_framework.routers import DefaultRouter
+from rest_framework.routers import SimpleRouter
 from .views import (
     OrganizationViewSet,
     accept_invite,
@@ -17,7 +17,7 @@ from .views import (
     check_invite_validity,
 )
 
-router = DefaultRouter()
+router = SimpleRouter()
 router.register(r'organizations', OrganizationViewSet, basename='organization')
 
 urlpatterns = [

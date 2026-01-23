@@ -95,3 +95,37 @@ class Evidence(models.Model):
 
     def __str__(self):
         return f"Evidence {self.question.key} [{self.status}] for Audit {self.audit.id}"
+
+class AuditSnapshot(models.Model):
+    audit = models.ForeignKey(
+        Audit,
+        on_delete=models.CASCADE,
+        related_name='snapshots',
+        help_text="The source audit this snapshot was created from"
+    )
+    organization = models.ForeignKey(
+        'organizations.Organization',
+        on_delete=models.CASCADE,
+        help_text="Organization isolation"
+    )
+    name = models.CharField(max_length=255, help_text="User-friendly name for this snapshot")
+    version = models.PositiveIntegerField(help_text="Incremental version number for this audit")
+    data = models.JSONField(help_text="The immutable snapshot data (audit + evidence)")
+    checksum = models.CharField(max_length=64, help_text="SHA256 checksum of the data field for integrity")
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        help_text="User who triggered the snapshot"
+    )
+
+    class Meta:
+        unique_together = ('audit', 'version')
+        ordering = ['-version']
+        indexes = [
+            models.Index(fields=['organization', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"Snapshot {self.version}: {self.name} ({self.audit.id})"

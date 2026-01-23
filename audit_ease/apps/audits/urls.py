@@ -12,6 +12,9 @@ from .views import (
     AuditEvidenceView,
     AuditListView,
     DashboardSummaryView,
+    AuditSnapshotCreateView,
+    AuditSnapshotListView,
+    AuditSnapshotDetailView,
 )
 from .views_export import export_audit_csv_streaming, ExportAuditReportView
 
@@ -36,4 +39,10 @@ urlpatterns = [
     
     # Executive dashboard summary with aggregated stats
     path('dashboard/summary/', DashboardSummaryView.as_view(), name='dashboard-summary'),
+
+    # Snapshots
+    path('<uuid:audit_id>/snapshots/', AuditSnapshotListView.as_view(), name='audit-snapshot-list'),
+    path('<uuid:audit_id>/snapshots/create/', AuditSnapshotCreateView.as_view(), name='audit-snapshot-create'),
+    path('snapshots/<int:pk>/', AuditSnapshotDetailView.as_view(), name='audit-snapshot-detail'),
+
 ]

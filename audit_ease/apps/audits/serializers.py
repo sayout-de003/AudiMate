@@ -36,3 +36,28 @@ class EvidenceSerializer(serializers.ModelSerializer):
         model = Evidence
         fields = ['id', 'question', 'status', 'raw_data', 'comment', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+from .models import AuditSnapshot
+
+class AuditSnapshotSerializer(serializers.ModelSerializer):
+    created_by_email = serializers.CharField(
+        source='created_by.email',
+        read_only=True,
+        help_text="Email of user who created the snapshot"
+    )
+    
+    class Meta:
+        model = AuditSnapshot
+        fields = ['id', 'audit', 'name', 'version', 'checksum', 'created_at', 'created_by_email']
+        read_only_fields = ['id', 'audit', 'version', 'checksum', 'created_at', 'created_by_email']
+
+class AuditSnapshotDetailSerializer(AuditSnapshotSerializer):
+    class Meta(AuditSnapshotSerializer.Meta):
+        fields = AuditSnapshotSerializer.Meta.fields + ['data']
+
+class AuditSnapshotCreateSerializer(serializers.Serializer):
+    name = serializers.CharField(
+        max_length=255, 
+        required=False,
+        help_text="Optional name for the snapshot. Auto-generated if blank."
+    )

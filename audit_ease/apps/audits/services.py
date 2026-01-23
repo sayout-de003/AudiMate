@@ -56,5 +56,85 @@ class AuditOrchestrator:
             self.audit.status = "FAILED"
             self.audit.error_log = str(e)
         
+
         finally:
             self.audit.save()
+
+# Snapshot Services
+import hashlib
+import json
+from django.db import models
+from django.core.serializers.json import DjangoJSONEncoder
+from .models import AuditSnapshot
+
+def create_audit_snapshot(audit_id: str, user, name: str = None) -> 'AuditSnapshot':
+    """
+    Creates an immutable snapshot of an audit.
+    
+    Args:
+        audit_id: The ID of the audit to snapshot
+        user: The user triggering the snapshot
+        name: Optional user-friendly name for the snapshot
+    
+    Returns:
+        The created AuditSnapshot instance
+    """
+    audit = Audit.objects.select_related('organization', 'triggered_by').get(id=audit_id)
+    evidence_qs = Evidence.objects.filter(audit=audit).select_related('question').order_by('created_at')
+    
+    # 1. Serialize the full state
+    # We construct a dictionary that represents the full state of the audit + evidence
+    
+    evidence_data = []
+    for ev in evidence_qs:
+        evidence_data.append({
+            'question_key': ev.question.key,
+            'question_title': ev.question.title,
+            'question_severity': ev.question.severity,
+            'status': ev.status,
+            'raw_data': ev.raw_data,
+            'comment': ev.comment,
+            'created_at': ev.created_at.isoformat(),
+        })
+        
+    snapshot_data = {
+        'audit': {
+            'id': str(audit.id),
+            'organization_id': str(audit.organization.id),
+            'organization_name': audit.organization.name,
+            'triggered_by_email': audit.triggered_by.email if audit.triggered_by else None,
+            'status': audit.status,
+            'created_at': audit.created_at.isoformat(),
+            'completed_at': audit.completed_at.isoformat() if audit.completed_at else None,
+        },
+        'evidence': evidence_data,
+        'metadata': {
+            'snapshot_created_at':  timezone.now().isoformat(),
+            'total_evidence_count': len(evidence_data),
+        }
+    }
+    
+    # Calculate checksum of the data to ensure integrity
+    # Convert to stable JSON string for hashing
+    json_str = json.dumps(snapshot_data, sort_keys=True, cls=DjangoJSONEncoder)
+    checksum = hashlib.sha256(json_str.encode('utf-8')).hexdigest()
+    
+    # Determine version number
+    current_version = AuditSnapshot.objects.filter(audit=audit).aggregate(models.Max('version'))['version__max'] or 0
+    new_version = current_version + 1
+    
+    # Default name if not provided
+    if not name:
+        name = f"Snapshot v{new_version}"
+        
+    snapshot = AuditSnapshot.objects.create(
+        audit=audit,
+        organization=audit.organization,
+        name=name,
+        version=new_version,
+        data=snapshot_data,
+        checksum=checksum,
+        created_by=user
+    )
+    
+    return snapshot

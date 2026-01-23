@@ -1,0 +1,1260 @@
+openapi: 3.0.3
+info:
+  title: AuditEase API
+  version: 1.0.0
+  description: Programmatic access for integrating AuditEase into your workflow.
+paths:
+  /api/v1/audits/:
+    get:
+      operationId: v1_audits_retrieve
+      description: Get all audits for organization.
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/audits/{audit_id}/:
+    get:
+      operationId: v1_audits_retrieve_2
+      description: Get audit details.
+      parameters:
+      - in: path
+        name: audit_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/audits/{audit_id}/evidence/:
+    get:
+      operationId: v1_audits_evidence_retrieve
+      description: Get all evidence for an audit.
+      parameters:
+      - in: path
+        name: audit_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/audits/{audit_id}/export/csv/:
+    get:
+      operationId: v1_audits_export_csv_retrieve
+      description: |-
+        Export Audit Results as CSV (Streaming Version)
+
+        Optimized for large datasets using proper CSV streaming.
+      parameters:
+      - in: path
+        name: audit_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/audits/{audit_id}/export/xlsx/:
+    get:
+      operationId: v1_audits_export_xlsx_retrieve
+      description: |-
+        Generate a detailed Excel report for an audit.
+        Includes Executive Summary and Detailed Findings.
+      parameters:
+      - in: path
+        name: audit_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/audits/{audit_id}/snapshots/:
+    get:
+      operationId: v1_audits_snapshots_retrieve_2
+      description: |-
+        GET /api/v1/audits/{audit_id}/snapshots/
+        List all snapshots for an audit.
+      parameters:
+      - in: path
+        name: audit_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/audits/{audit_id}/snapshots/create/:
+    post:
+      operationId: v1_audits_snapshots_create_create
+      description: |-
+        POST /api/v1/audits/{audit_id}/snapshots/
+
+        Trigger creation of a new immutable snapshot.
+      parameters:
+      - in: path
+        name: audit_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/audits/dashboard/summary/:
+    get:
+      operationId: v1_audits_dashboard_summary_retrieve
+      description: Get dashboard summary statistics.
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/audits/snapshots/{id}/:
+    get:
+      operationId: v1_audits_snapshots_retrieve
+      description: |-
+        GET /api/v1/audits/snapshots/{pk}/
+        Retrieve a specific snapshot with full data.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/audits/start/:
+    post:
+      operationId: v1_audits_start_create
+      description: |-
+        Create and execute a new audit for the user's organization.
+
+        Rate Limited: Controlled by AUDIT_RATE_LIMIT setting via ratelimit decorator.
+
+        Returns HTTP 202 (Accepted) immediately while background worker executes checks.
+        Frontend should poll GET /api/v1/audits/{audit_id}/ to check for completion.
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/auth/login/:
+    post:
+      operationId: v1_auth_login_create
+      description: |-
+        Takes a set of user credentials and returns an access and refresh JSON web
+        token pair to prove the authentication of those credentials.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenObtainPair'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenObtainPair'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenObtainPair'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenObtainPair'
+          description: ''
+  /api/v1/auth/refresh/:
+    post:
+      operationId: v1_auth_refresh_create
+      description: |-
+        Takes a refresh type JSON web token and returns an access type JSON web
+        token if the refresh token is valid.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+        required: true
+      security:
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefresh'
+          description: ''
+  /api/v1/auth/register/:
+    post:
+      operationId: v1_auth_register_create
+      description: |-
+        Endpoint for new users to register.
+        Auth not required.
+      summary: Register a new user
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegistration'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserRegistration'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserRegistration'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRegistration'
+          description: ''
+  /api/v1/billing/checkout_session/:
+    post:
+      operationId: v1_billing_checkout_session_create
+      description: Creates a Stripe Checkout Session for a subscription. Returns a
+        URL to redirect the user to Stripe.
+      summary: Create Stripe Checkout Session
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: Checkout session created successfully
+        '403':
+          description: User does not have access to this organization
+        '404':
+          description: Organization not found
+  /api/v1/integrations/github/callback/:
+    post:
+      operationId: v1_integrations_github_callback_create
+      description: |-
+        Step 2: Receives the 'code' from the Frontend, exchanges it for a token,
+        and creates/updates the Integration record.
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/integrations/github/connect/:
+    get:
+      operationId: v1_integrations_github_connect_retrieve
+      description: |-
+        Step 1: Generates the GitHub OAuth URL.
+        The frontend should redirect the user to this URL.
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/integrations/webhooks/github/:
+    post:
+      operationId: v1_integrations_webhooks_github_create
+      description: |-
+        Handle GitHub webhook event.
+
+        Expected headers:
+        - X-Hub-Signature-256: sha256=<signature>
+        - X-GitHub-Event: event type
+        - X-GitHub-Delivery: delivery ID
+      summary: GitHub Webhook Listener
+      tags:
+      - v1
+      responses:
+        '200':
+          description: No response body
+  /api/v1/invites/accept/:
+    post:
+      operationId: v1_invites_accept_create
+      description: |-
+        POST /api/v1/invites/accept/
+
+        Accept an organization invitation using the token.
+
+        This endpoint is "global" (not org-specific) because the user
+        doesn't belong to the org yet - they're using the token to join.
+
+        Request Body:
+        {
+            "token": "64_character_hex_string_from_email"
+        }
+
+        Returns:
+        {
+            "id": "membership_id",
+            "user": {...},
+            "role": "MEMBER",
+            "joined_at": "...",
+            "can_invite_members": false,
+            "can_manage_members": false
+        }
+
+        SECURITY:
+        - User must be authenticated
+        - Token must be valid and not expired
+        - User cannot already be a member
+        - Prevents re-using tokens
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/invites/check/:
+    get:
+      operationId: v1_invites_check_retrieve
+      description: |-
+        GET /api/v1/invites/check/
+
+        Check if an invitation token is valid.
+        Used by frontend to show expiry, organization, role before accepting.
+
+        Query Parameters:
+        - token: The invitation token
+
+        Returns:
+        {
+            "valid": true,
+            "organization": "...",
+            "role": "MEMBER",
+            "expires_at": "...",
+            "message": "..."
+        }
+
+        OR
+
+        {
+            "valid": false,
+            "reason": "expired|invalid|already_member"
+        }
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/organizations/:
+    get:
+      operationId: v1_organizations_list
+      description: |-
+        Organization CRUD API Endpoint
+
+        GET    /api/v1/organizations/           - List user's organizations
+        POST   /api/v1/organizations/           - Create new organization
+        GET    /api/v1/organizations/{id}/      - Get organization details
+        PUT    /api/v1/organizations/{id}/      - Update organization (ADMIN only)
+        PATCH  /api/v1/organizations/{id}/      - Partial update (ADMIN only)
+        DELETE /api/v1/organizations/{id}/      - Delete organization (ADMIN only)
+
+        Industry-Grade Security:
+        - IsAuthenticated: User must be logged in
+        - IsSameOrganization: User can only access their own org
+        - IsOrgAdmin: Modify operations require ADMIN role
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedOrganizationList'
+          description: ''
+    post:
+      operationId: v1_organizations_create
+      description: |-
+        Organization CRUD API Endpoint
+
+        GET    /api/v1/organizations/           - List user's organizations
+        POST   /api/v1/organizations/           - Create new organization
+        GET    /api/v1/organizations/{id}/      - Get organization details
+        PUT    /api/v1/organizations/{id}/      - Update organization (ADMIN only)
+        PATCH  /api/v1/organizations/{id}/      - Partial update (ADMIN only)
+        DELETE /api/v1/organizations/{id}/      - Delete organization (ADMIN only)
+
+        Industry-Grade Security:
+        - IsAuthenticated: User must be logged in
+        - IsSameOrganization: User can only access their own org
+        - IsOrgAdmin: Modify operations require ADMIN role
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Organization'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Organization'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Organization'
+        required: true
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+          description: ''
+  /api/v1/organizations/{id}/:
+    get:
+      operationId: v1_organizations_retrieve
+      description: |-
+        Organization CRUD API Endpoint
+
+        GET    /api/v1/organizations/           - List user's organizations
+        POST   /api/v1/organizations/           - Create new organization
+        GET    /api/v1/organizations/{id}/      - Get organization details
+        PUT    /api/v1/organizations/{id}/      - Update organization (ADMIN only)
+        PATCH  /api/v1/organizations/{id}/      - Partial update (ADMIN only)
+        DELETE /api/v1/organizations/{id}/      - Delete organization (ADMIN only)
+
+        Industry-Grade Security:
+        - IsAuthenticated: User must be logged in
+        - IsSameOrganization: User can only access their own org
+        - IsOrgAdmin: Modify operations require ADMIN role
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Organization.
+        required: true
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationDetail'
+          description: ''
+    put:
+      operationId: v1_organizations_update
+      description: |-
+        Organization CRUD API Endpoint
+
+        GET    /api/v1/organizations/           - List user's organizations
+        POST   /api/v1/organizations/           - Create new organization
+        GET    /api/v1/organizations/{id}/      - Get organization details
+        PUT    /api/v1/organizations/{id}/      - Update organization (ADMIN only)
+        PATCH  /api/v1/organizations/{id}/      - Partial update (ADMIN only)
+        DELETE /api/v1/organizations/{id}/      - Delete organization (ADMIN only)
+
+        Industry-Grade Security:
+        - IsAuthenticated: User must be logged in
+        - IsSameOrganization: User can only access their own org
+        - IsOrgAdmin: Modify operations require ADMIN role
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Organization.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationDetail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OrganizationDetail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OrganizationDetail'
+        required: true
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationDetail'
+          description: ''
+    patch:
+      operationId: v1_organizations_partial_update
+      description: |-
+        Organization CRUD API Endpoint
+
+        GET    /api/v1/organizations/           - List user's organizations
+        POST   /api/v1/organizations/           - Create new organization
+        GET    /api/v1/organizations/{id}/      - Get organization details
+        PUT    /api/v1/organizations/{id}/      - Update organization (ADMIN only)
+        PATCH  /api/v1/organizations/{id}/      - Partial update (ADMIN only)
+        DELETE /api/v1/organizations/{id}/      - Delete organization (ADMIN only)
+
+        Industry-Grade Security:
+        - IsAuthenticated: User must be logged in
+        - IsSameOrganization: User can only access their own org
+        - IsOrgAdmin: Modify operations require ADMIN role
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Organization.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedOrganizationDetail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedOrganizationDetail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedOrganizationDetail'
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationDetail'
+          description: ''
+    delete:
+      operationId: v1_organizations_destroy
+      description: |-
+        Organization CRUD API Endpoint
+
+        GET    /api/v1/organizations/           - List user's organizations
+        POST   /api/v1/organizations/           - Create new organization
+        GET    /api/v1/organizations/{id}/      - Get organization details
+        PUT    /api/v1/organizations/{id}/      - Update organization (ADMIN only)
+        PATCH  /api/v1/organizations/{id}/      - Partial update (ADMIN only)
+        DELETE /api/v1/organizations/{id}/      - Delete organization (ADMIN only)
+
+        Industry-Grade Security:
+        - IsAuthenticated: User must be logged in
+        - IsSameOrganization: User can only access their own org
+        - IsOrgAdmin: Modify operations require ADMIN role
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Organization.
+        required: true
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/organizations/{id}/invite_member/:
+    post:
+      operationId: v1_organizations_invite_member_create
+      description: |-
+        POST /api/v1/organizations/{id}/invite_member/
+
+        Invite a new member to the organization.
+
+        Request Body:
+        {
+            "email": "newmember@example.com",
+            "role": "MEMBER"  # ADMIN, MEMBER, or VIEWER
+        }
+
+        Returns:
+        {
+            "id": "...",
+            "email": "newmember@example.com",
+            "role": "MEMBER",
+            "status": "PENDING",
+            "expires_at": "2026-01-27T...",
+            ...
+        }
+
+        SECURITY:
+        - Only ADMIN members can send invites
+        - IsSameOrganization ensures org isolation
+        - Validates email and role
+        - Prevents duplicate invites
+        - Prevents inviting existing members
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Organization.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Organization'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Organization'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Organization'
+        required: true
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+          description: ''
+  /api/v1/organizations/{id}/invites/:
+    get:
+      operationId: v1_organizations_invites_retrieve
+      description: |-
+        GET /api/v1/organizations/{id}/invites/
+
+        List all pending and accepted invites for this organization.
+
+        SECURITY: Only ADMIN members can view invites.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Organization.
+        required: true
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+          description: ''
+  /api/v1/organizations/{id}/members/:
+    get:
+      operationId: v1_organizations_members_retrieve
+      description: |-
+        GET /api/v1/organizations/{id}/members/
+
+        List all members of the organization.
+
+        SECURITY: All authenticated members can view members list.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Organization.
+        required: true
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+          description: ''
+  /api/v1/organizations/{id}/members/{user_id}/:
+    delete:
+      operationId: v1_organizations_members_destroy
+      description: |-
+        DELETE /api/v1/organizations/{id}/members/{user_id}/
+
+        Remove a member from the organization.
+
+        SECURITY:
+        - Only ADMIN members can remove members
+        - Cannot remove organization owner
+        - Cannot remove last admin
+
+        Returns:
+        {
+            "detail": "Member successfully removed"
+        }
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this Organization.
+        required: true
+      - in: path
+        name: user_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/reports/{id}/pdf/:
+    get:
+      operationId: v1_reports_pdf_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/user-organizations/:
+    get:
+      operationId: v1_user_organizations_retrieve
+      description: |-
+        GET /api/v1/user-organizations/
+
+        Get all organizations the user belongs to.
+        Returns a list of organizations with member details.
+
+        Query Parameters:
+        - role: Filter by membership role (ADMIN, MEMBER, VIEWER)
+        - page_size: Results per page (default 25, max 100)
+        - page: Page number (default 1)
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/users/me/:
+    get:
+      operationId: v1_users_me_retrieve
+      description: Endpoint to get current user details + Active Org Context
+      tags:
+      - v1
+      security:
+      - basicAuth: []
+      - cookieAuth: []
+      - jwtAuth: []
+      - BearerAuth: []
+      responses:
+        '200':
+          description: No response body
+components:
+  schemas:
+    Membership:
+      type: object
+      description: Membership with embedded user data.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        user:
+          allOf:
+          - $ref: '#/components/schemas/UserBasic'
+          readOnly: true
+        user_id:
+          type: string
+          format: uuid
+          writeOnly: true
+        role:
+          $ref: '#/components/schemas/RoleEnum'
+        joined_at:
+          type: string
+          format: date-time
+          readOnly: true
+        can_invite_members:
+          type: boolean
+          description: Determine if this member can invite others.
+          readOnly: true
+        can_manage_members:
+          type: boolean
+          description: Determine if this member can manage others.
+          readOnly: true
+      required:
+      - can_invite_members
+      - can_manage_members
+      - id
+      - joined_at
+      - user
+    Organization:
+      type: object
+      description: |-
+        Organization serializer for list/create views.
+        Minimal representation with member count.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 255
+        slug:
+          type: string
+          readOnly: true
+          pattern: ^[-a-zA-Z0-9_]+$
+        owner:
+          allOf:
+          - $ref: '#/components/schemas/UserBasic'
+          readOnly: true
+        member_count:
+          type: integer
+          description: Get total member count.
+          readOnly: true
+        admin_count:
+          type: integer
+          description: Get admin member count.
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - admin_count
+      - created_at
+      - id
+      - member_count
+      - name
+      - owner
+      - slug
+      - updated_at
+    OrganizationDetail:
+      type: object
+      description: |-
+        Detailed organization serializer with full member list.
+        Used for retrieve/update views.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 255
+        slug:
+          type: string
+          readOnly: true
+          pattern: ^[-a-zA-Z0-9_]+$
+        owner:
+          allOf:
+          - $ref: '#/components/schemas/UserBasic'
+          readOnly: true
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/Membership'
+          readOnly: true
+        member_count:
+          type: integer
+          description: Get total member count.
+          readOnly: true
+        admin_count:
+          type: integer
+          description: Get admin member count.
+          readOnly: true
+        pending_invites_count:
+          type: integer
+          description: Get pending invites count.
+          readOnly: true
+        is_owner:
+          type: boolean
+          description: Check if current user is organization owner.
+          readOnly: true
+        is_admin:
+          type: boolean
+          description: Check if current user is admin.
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - admin_count
+      - created_at
+      - id
+      - is_admin
+      - is_owner
+      - member_count
+      - members
+      - name
+      - owner
+      - pending_invites_count
+      - slug
+      - updated_at
+    PaginatedOrganizationList:
+      type: object
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Organization'
+    PatchedOrganizationDetail:
+      type: object
+      description: |-
+        Detailed organization serializer with full member list.
+        Used for retrieve/update views.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 255
+        slug:
+          type: string
+          readOnly: true
+          pattern: ^[-a-zA-Z0-9_]+$
+        owner:
+          allOf:
+          - $ref: '#/components/schemas/UserBasic'
+          readOnly: true
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/Membership'
+          readOnly: true
+        member_count:
+          type: integer
+          description: Get total member count.
+          readOnly: true
+        admin_count:
+          type: integer
+          description: Get admin member count.
+          readOnly: true
+        pending_invites_count:
+          type: integer
+          description: Get pending invites count.
+          readOnly: true
+        is_owner:
+          type: boolean
+          description: Check if current user is organization owner.
+          readOnly: true
+        is_admin:
+          type: boolean
+          description: Check if current user is admin.
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+    RoleEnum:
+      enum:
+      - ADMIN
+      - MEMBER
+      - VIEWER
+      type: string
+      description: |-
+        * `ADMIN` - Admin
+        * `MEMBER` - Member
+        * `VIEWER` - Viewer
+    TokenObtainPair:
+      type: object
+      properties:
+        email:
+          type: string
+          writeOnly: true
+        password:
+          type: string
+          writeOnly: true
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+          readOnly: true
+      required:
+      - access
+      - email
+      - password
+      - refresh
+    TokenRefresh:
+      type: object
+      properties:
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+      required:
+      - access
+      - refresh
+    UserBasic:
+      type: object
+      description: Basic user info for responses (no sensitive data).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+          title: Email address
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        full_name:
+          type: string
+          description: Construct full name from name fields.
+          readOnly: true
+      required:
+      - email
+      - full_name
+      - id
+    UserRegistration:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        email:
+          type: string
+          format: email
+          title: Email address
+          maxLength: 254
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        password:
+          type: string
+          writeOnly: true
+        password_confirm:
+          type: string
+          writeOnly: true
+      required:
+      - email
+      - first_name
+      - id
+      - last_name
+      - password
+      - password_confirm
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

@@ -16,6 +16,22 @@ APPS_DIR = BASE_DIR / "apps"
 # This allows you to import 'users' instead of 'apps.users'
 # sys.path.append(str(APPS_DIR)) 
 
+# Sentry Configuration
+import sentry_sdk
+from sentry_sdk.integrations.django import DjangoIntegration
+from sentry_sdk.integrations.celery import CeleryIntegration
+
+sentry_sdk.init(
+    dsn=os.environ.get("SENTRY_DSN"),
+    integrations=[
+        DjangoIntegration(),
+        CeleryIntegration(),
+    ],
+    traces_sample_rate=1.0,
+    send_default_pii=True,
+    environment=os.environ.get("DJANGO_ENV", "production")
+) 
+
 # 2. Environment Configuration
 env = environ.Env()
 # Always try to read .env file if it exists
@@ -56,6 +72,7 @@ THIRD_PARTY_APPS = [
     "django_celery_results",  # Stores celery tasks in DB if needed
     # "django_extensions",    # Optional: useful for shell_plus
     "drf_spectacular",
+    "auditlog",
 ]
 
 LOCAL_APPS = [
@@ -86,6 +103,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     # Custom Middleware
     "middleware.org_context.OrgContextMiddleware",
+    "auditlog.middleware.AuditlogMiddleware",
     "middleware.audit_logging.AuditLogMiddleware",
 ]
 
@@ -142,6 +160,15 @@ CACHES = {
         }
     }
 }
+# Use Redis if configured in environment (Production)
+if env.str("REDIS_URL", default=None):
+    CACHES["default"] = {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": env("REDIS_URL"),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    }
 
 # 13. REST Framework
 REST_FRAMEWORK = {
@@ -157,6 +184,16 @@ REST_FRAMEWORK = {
         "rest_framework.renderers.JSONRenderer",
     ),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+
+    # Global Throttling
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle'
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/day',   # Strict: Block bots/scrapers
+        'user': '1000/hour', # Standard: Approx 16 requests/minute
+    }
 }
 
 # 14. JWT Settings
@@ -321,8 +358,9 @@ CELERY_TASK_SERIALIZER = 'json'
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "AuditEase API",
-    "DESCRIPTION": "API documentation for AuditEase platform",
+    "DESCRIPTION": "Programmatic access for integrating AuditEase into your workflow.",
     "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
 
     "SECURITY": [{"BearerAuth": []}],
     "COMPONENTS": {

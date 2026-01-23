@@ -18,7 +18,7 @@ def send_audit_completion_email(sender, instance, created, **kwargs):
             f"Audit ID: {instance.id}\n"
             f"Status: {instance.status}\n"
             f"Created: {instance.created_at}\n\n"
-            f"View it here: https://yourdomain.com/audits/{instance.id}"
+            f"View it here: https://zpie.co.in/audits/{instance.id}"
         )
         
         # Get the organization owner to send notification
