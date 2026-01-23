@@ -16,12 +16,16 @@ from services.encryption_manager import get_key_manager
 logger = logging.getLogger(__name__)
 
 class Integration(models.Model):
-    PROVIDER_CHOICES = [
-        ("github", "GitHub"),
-        ("gitlab", "GitLab"),
-        ("jira", "Jira"),
-        ("aws", "AWS"),
-    ]
+    class ProviderChoices(models.TextChoices):
+        GITHUB = 'github', 'GitHub'
+        # GITLAB = 'gitlab', 'GitLab'
+        # JIRA = 'jira', 'Jira'
+        # AWS = 'aws', 'AWS'
+
+    class StatusChoices(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        DISCONNECTED = 'disconnected', 'Disconnected'
+        ERROR = 'error', 'Error'
 
     # --- Relationships ---
     organization = models.ForeignKey(
@@ -42,21 +46,26 @@ class Integration(models.Model):
     name = models.CharField(
         max_length=100, 
         blank=True, 
-        help_text="Friendly name (e.g., 'Prod GitHub')"
+        help_text="Friendly name (e.g., 'Engineering Team's Repo')"
     )
     provider = models.CharField(
         max_length=50, 
-        choices=PROVIDER_CHOICES, 
-        default="github"
+        choices=ProviderChoices.choices, 
+        default=ProviderChoices.GITHUB
     )
-    identifier = models.CharField(
+    external_id = models.CharField(
         max_length=255, 
-        help_text="External ID (e.g. GitHub Organization name or Installation ID)"
+        help_text="External ID (e.g. GitHub Organization ID or Repo ID)"
     )
-    meta_data = models.JSONField(
+    config = models.JSONField(
         default=dict, 
         blank=True,
-        help_text="Store extra provider data here (scopes, expiry, repo_name, etc)"
+        help_text="Store provider-specific metadata here"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=StatusChoices.choices,
+        default=StatusChoices.ACTIVE
     )
 
     # --- Encrypted Storage Fields ---
@@ -73,7 +82,7 @@ class Integration(models.Model):
         verbose_name = "Integration"
         verbose_name_plural = "Integrations"
         # Critical: Prevent duplicate integrations for same org/provider/external-id
-        unique_together = ('organization', 'provider', 'identifier')
+        unique_together = ('organization', 'provider', 'external_id')
         # Indexes for fast lookups
         indexes = [
             models.Index(fields=['organization', 'provider']),
@@ -81,7 +90,7 @@ class Integration(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.organization.name} - {self.get_provider_display()} ({self.identifier})"
+        return f"{self.organization.name} - {self.get_provider_display()} ({self.external_id})"
 
     # --- Encryption & Decryption ---
 

@@ -50,6 +50,7 @@ class Audit(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='RUNNING')
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    score = models.IntegerField(default=0, help_text="Audit compliance score (0-100)")
 
     class Meta:
         # Ensure organization isolation: Company A's audits can't be accessed by Company B

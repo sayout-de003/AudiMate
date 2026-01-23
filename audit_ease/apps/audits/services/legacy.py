@@ -65,7 +65,7 @@ import hashlib
 import json
 from django.db import models
 from django.core.serializers.json import DjangoJSONEncoder
-from .models import AuditSnapshot
+from apps.audits.models import AuditSnapshot
 
 def create_audit_snapshot(audit_id: str, user, name: str = None) -> 'AuditSnapshot':
     """

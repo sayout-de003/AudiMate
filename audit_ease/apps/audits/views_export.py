@@ -286,17 +286,18 @@ class ExportAuditReportView(APIView):
             self.check_object_permissions(request, audit)
             
             # --- Data Aggregation ---
-            evidence_qs = Evidence.objects.filter(audit=audit).select_related('question')
-            total_checks = evidence_qs.count()
-            passed_checks = evidence_qs.filter(status='PASS').count()
-            failed_checks = evidence_qs.filter(status='FAIL').count()
-            error_checks = evidence_qs.filter(status='ERROR').count() # Assuming ERROR is also possible/relevant
+            # --- Data Aggregation ---
+            from apps.audits.services.stats_service import AuditStatsService
+            stats = AuditStatsService.calculate_audit_stats(audit)
             
-            # Compliance Score calculation
-            if total_checks > 0:
-                compliance_score = (passed_checks / total_checks) * 100
-            else:
-                compliance_score = 0.0
+            # Use stats from service to ensure parity with Dashboard
+            total_checks = stats['total_findings']
+            passed_checks = stats['passed_count']
+            failed_checks = stats['failed_count']
+            compliance_score = stats['pass_rate_percentage']
+
+            # Re-query for detailed iteration (Sheet 2)
+            evidence_qs = Evidence.objects.filter(audit=audit).select_related('question')
 
             # --- Excel Generation ---
             wb = Workbook()

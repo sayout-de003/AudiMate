@@ -1,13 +1,17 @@
-
 # config/urls.py
 from django.contrib import admin
 from django.urls import path, include
+from apps.users.views_frontend import UserProfileView
 
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularSwaggerView,
     SpectacularRedocView,
 )
+
+from audit_ease.config.views import custom_500
+
+handler500 = 'audit_ease.config.views.custom_500'
 
 from django.contrib.admin.views.decorators import staff_member_required
 
@@ -42,10 +46,15 @@ urlpatterns = [
     path("api/v1/audits/", include("apps.audits.urls")),
     path("api/v1/reports/", include("apps.reports.urls")),
     path("api/v1/billing/", include("apps.billing.urls")),
+    path("api/v1/billing/", include("apps.billing.urls")),
     path("debug-sentry/", trigger_error),
+
+    # AllAuth URLs
+    path("accounts/", include("allauth.urls")),
 
     # Frontend Views
     path("settings/audit-log/", include("apps.organizations.urls_frontend")),
+    path("settings/profile/", UserProfileView.as_view(), name="user-profile"),
 ]
 
 

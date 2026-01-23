@@ -18,7 +18,9 @@ from apps.organizations.permissions import IsSameOrganization
 from .models import Audit, Evidence, AuditSnapshot
 from .serializers import AuditSerializer, EvidenceSerializer, AuditSnapshotSerializer, AuditSnapshotCreateSerializer, AuditSnapshotDetailSerializer
 from .services import create_audit_snapshot
+from apps.audits.services.stats_service import AuditStatsService
 from .logic import run_audit_sync
+from .mixins import RequireGitHubTokenMixin
 from django.db.models import Count, Q
 from django.utils import timezone
 from django_ratelimit.decorators import ratelimit
@@ -88,7 +90,7 @@ def run_audit_background(audit_id: str, user_id: int) -> None:
     ratelimit(key='user', rate=lambda r: settings.AUDIT_RATE_LIMIT, method='POST', block=True),
     name='dispatch'
 )
-class AuditStartView(APIView):
+class AuditStartView(RequireGitHubTokenMixin, APIView):
     """
     POST /api/v1/audits/start/
     
@@ -96,6 +98,7 @@ class AuditStartView(APIView):
     Rate Limited: 5 audits per hour per user (configurable via AUDIT_RATE_LIMIT setting).
     
     SECURITY:
+    - RequireGitHubTokenMixin: Redirects to profile if GitHub not connected.
     - IsSameOrganization: User can only audit their own organization
     - IsAuthenticated: User must be logged in
     - Rate Limiting: 5 audits per hour to prevent API abuse
@@ -133,13 +136,9 @@ class AuditStartView(APIView):
                 f"Status: PENDING. Launching background worker thread."
             )
             
-            # Launch background worker thread
-            task = threading.Thread(
-                target=run_audit_background,
-                args=(str(audit.id), request.user.id),
-                daemon=False  # Don't let thread be a daemon so it completes even if app restarts
-            )
-            task.start()
+            # Trigger Celery task
+            from .tasks import run_audit_task
+            run_audit_task.delay(audit.id)
             
             # Return 202 Accepted immediately
             return Response(
@@ -529,3 +528,62 @@ class AuditSnapshotDetailView(APIView):
             return Response(serializer.data)
         except AuditSnapshot.DoesNotExist:
             return Response({'error': 'Snapshot not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class DashboardStatsView(APIView):
+    """
+    GET /api/v1/audits/dashboard/stats/
+    
+    Returns statistics for the *latest completed audit* to ensure parity with 
+    detailed reports (Excel/CSV).
+    """
+    permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
+
+    def get(self, request):
+        try:
+            organization = request.user.get_organization()
+            if not organization:
+                 return Response({'error': 'No organization'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Fetch the latest COMPLETED audit
+            latest_audit = Audit.objects.filter(
+                organization=organization,
+                status='COMPLETED'
+            ).order_by('-created_at').first()
+
+            if not latest_audit:
+                 # Empty state for new users
+                 return Response({
+                     'has_audits': False,
+                     'message': "Run your first audit to see analytics."
+                 })
+
+            # Calculate stats using the shared service
+            stats = AuditStatsService.calculate_audit_stats(latest_audit)
+
+            # Add History (Last 5 audits)
+            history_qs = Audit.objects.filter(
+                organization=organization
+            ).order_by('-created_at')[:5]
+
+            history = []
+            for aud in history_qs:
+                history.append({
+                    'id': str(aud.id),
+                    'created_at': aud.created_at.isoformat(),
+                    'status': aud.status,
+                    'is_latest': aud.id == latest_audit.id
+                })
+
+            response_data = {
+                'has_audits': True,
+                'latest_audit_id': str(latest_audit.id),
+                'stats': stats,
+                'history': history
+            }
+            
+            return Response(response_data)
+
+        except Exception as e:
+            logger.exception(f"Dashboard stats error: {e}")
+            return Response({'error': 'Internal Error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

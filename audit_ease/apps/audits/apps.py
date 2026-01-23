@@ -9,4 +9,5 @@ class AuditsConfig(AppConfig):
     def ready(self):
         from . import audit_registry
         audit_registry.register_models()
+        import apps.audits.signals  # Register signals
 

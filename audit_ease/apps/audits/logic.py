@@ -9,6 +9,7 @@ no mock data. Every result is backed by real evidence from the target system.
 """
 
 import logging
+from django.conf import settings
 from django.utils import timezone
 from .models import Audit, Evidence, Question
 from services.github_service import GitHubService, GitHubServiceError
@@ -437,6 +438,9 @@ class AuditExecutor:
         
         Raises if no AWS integration is configured.
         """
+        if not getattr(settings, 'ENABLE_AWS_BETA', False):
+             raise AwsServiceError("AWS features are currently disabled.")
+
         try:
             integration = Integration.objects.get(
                 organization=self.audit.organization,

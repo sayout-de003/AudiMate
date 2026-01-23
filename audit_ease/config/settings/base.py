@@ -73,6 +73,10 @@ THIRD_PARTY_APPS = [
     # "django_extensions",    # Optional: useful for shell_plus
     "drf_spectacular",
     "auditlog",
+    "allauth",
+    "allauth.account",
+    "allauth.socialaccount",
+    "allauth.socialaccount.providers.github",
 ]
 
 LOCAL_APPS = [
@@ -105,6 +109,7 @@ MIDDLEWARE = [
     "middleware.org_context.OrgContextMiddleware",
     "auditlog.middleware.AuditlogMiddleware",
     "middleware.audit_logging.AuditLogMiddleware",
+    "allauth.account.middleware.AccountMiddleware",
 ]
 
 # 9. Templates
@@ -204,6 +209,29 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
+
+# 14.5 AllAuth Configuration
+SITE_ID = 1
+
+AUTHENTICATION_BACKENDS = [
+    # Needed to login by username in Django admin, regardless of `allauth`
+    'django.contrib.auth.backends.ModelBackend',
+    # `allauth` specific authentication methods, such as login by e-mail
+    'allauth.account.auth_backends.AuthenticationBackend',
+]
+
+SOCIALACCOUNT_PROVIDERS = {
+    'github': {
+        'SCOPE': [
+            'read:user',
+            'user:email',
+            'read:org', # Needed to verify organization membership
+        ],
+    }
+}
+
+# Add AllAuth apps to INSTALLED_APPS (Appending to existing list)
+# (Added to THIRD_PARTY_APPS above)
 
 # 15. Logging (Basic Setup)
 LOGGING = {
@@ -373,3 +401,4 @@ SPECTACULAR_SETTINGS = {
         }
     },
 }
+ENABLE_AWS_BETA = False

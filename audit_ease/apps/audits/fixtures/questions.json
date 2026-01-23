@@ -98,5 +98,15 @@
       "description": "Ensures admin panels are behind MFA.",
       "severity": "LOW"
     }
+  },
+  {
+    "model": "audits.question",
+    "pk": 11,
+    "fields": {
+      "key": "readme_exists",
+      "title": "Missing Documentation",
+      "description": "Checks if the repository has a README.md file.",
+      "severity": "MEDIUM"
+    }
   }
 ]

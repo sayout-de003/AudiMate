@@ -4,6 +4,7 @@ from .views import BillingViewSet, stripe_webhook
 
 # Router for ViewSet actions
 router = DefaultRouter()
+router.include_format_suffixes = False
 router.register(r'', BillingViewSet, basename='billing')
 
 urlpatterns = [

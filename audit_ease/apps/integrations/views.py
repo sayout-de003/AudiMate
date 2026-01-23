@@ -39,6 +39,34 @@ class GithubConnectView(APIView):
         })
 
 
+from rest_framework import viewsets
+from apps.integrations.serializers import IntegrationSerializer
+
+class IntegrationViewSet(viewsets.ModelViewSet):
+    """
+    API for managing Integrations.
+    Strictly enforcing "only GitHub" for V1.
+    """
+    serializer_class = IntegrationSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        # Users see integrations for their organization
+        if hasattr(self.request, 'organization') and self.request.organization:
+             return Integration.objects.filter(organization=self.request.organization)
+        # Fallback if organization middleware isn't perfect or for superusers
+        return Integration.objects.none()
+
+    def perform_create(self, serializer):
+        # Strict guardrail: Always set provider='github'
+        # The logic is also in serializer but double enforcement is safer
+        serializer.save(
+            provider='github', 
+            organization=self.request.organization,
+            created_by=self.request.user
+        )
+
+
 class GithubCallbackView(APIView):
     """
     Step 2: Receives the 'code' from the Frontend, exchanges it for a token,
@@ -75,7 +103,7 @@ class GithubCallbackView(APIView):
             logger.error(f"GitHub User Info Failed: {e}")
             return Response({"error": "Failed to fetch GitHub user profile"}, status=status.HTTP_502_BAD_GATEWAY)
 
-        identifier = str(gh_user['id'])
+        external_id = str(gh_user['id'])
         gh_username = gh_user['login']
 
         # 3. Resolve Organization
@@ -93,7 +121,7 @@ class GithubCallbackView(APIView):
         # 4. Save/Update DB
         # The 'access_token' assignment here automatically triggers the 
         # encryption logic defined in the Integration model setter.
-        meta_data = {
+        config_data = {
             'username': gh_username, 
             'avatar_url': gh_user.get('avatar_url'),
             'scopes': token_data.get('scope', ''),
@@ -103,12 +131,13 @@ class GithubCallbackView(APIView):
         integration, created = Integration.objects.update_or_create(
             organization=org,
             provider='github',
-            identifier=identifier,
+            external_id=external_id,
             defaults={
                 'name': f"GitHub ({gh_username})",
                 'access_token': access_token, 
                 # 'refresh_token': refresh_token, # Uncomment if your app supports rotation
-                'meta_data': meta_data
+                'config': config_data,
+                'status': 'active'
             }
         )
 
@@ -331,77 +360,3 @@ class GitHubWebhookView(APIView):
 
 
 
-# from django.shortcuts import render
-
-# # Create your views here.
-# from rest_framework.views import APIView
-# from rest_framework.response import Response
-# from rest_framework.permissions import IsAuthenticated
-# from django.shortcuts import redirect
-# from django.conf import settings
-# from .models import Integration
-# from .github.oauth import GitHubOAuth
-
-# class GithubConnectView(APIView):
-#     """
-#     Step 1: Returns the URL to redirect the user to GitHub.
-#     """
-#     permission_classes = [IsAuthenticated]
-
-#     def get(self, request):
-#         oauth = GitHubOAuth()
-#         # Ensure the callback matches what you registered in GitHub
-#         redirect_uri = "http://127.0.0.1:8000/api/integrations/github/callback/"
-#         url = oauth.get_authorization_url(redirect_uri)
-#         return Response({"authorization_url": url})
-
-# class GithubCallbackView(APIView):
-#     """
-#     Step 2: Handles the callback from GitHub, exchanges code, and saves token.
-#     """
-#     permission_classes = [IsAuthenticated] # Requires Bearer token even on callback
-
-#     def post(self, request):
-#         code = request.data.get("code")
-        
-#         if not code:
-#             return Response({"error": "No code provided"}, status=400)
-
-#         # 1. Exchange Code for Token
-#         oauth = GitHubOAuth()
-#         try:
-#             token_data = oauth.exchange_code_for_token(code)
-#         except Exception as e:
-#             return Response({"error": f"GitHub handshake failed: {str(e)}"}, status=400)
-
-#         if "error" in token_data:
-#             return Response({"error": token_data.get("error_description")}, status=400)
-
-#         access_token = token_data['access_token']
-
-#         # 2. Get GitHub User ID (to use as stable identifier)
-#         gh_user = oauth.get_user_info(access_token)
-#         identifier = str(gh_user['id'])
-#         gh_username = gh_user['login']
-
-#         # 3. Save to DB (Encrypts automatically via Model property)
-#         # Assuming middleware set request.organization
-#         org = request.organization
-#         if not org:
-#              return Response({"detail": "Organization context required"}, status=403)
-
-#         integration, created = Integration.objects.update_or_create(
-#             organization=org,
-#             provider='github',
-#             identifier=identifier,
-#             defaults={
-#                 'access_token': access_token, # This triggers the @setter encryption
-#                 'meta_data': {'username': gh_username}
-#             }
-#         )
-
-#         return Response({
-#             "status": "connected",
-#             "provider": "github",
-#             "account": gh_username
-#         })

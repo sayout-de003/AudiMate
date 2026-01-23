@@ -12,6 +12,7 @@ from .views import (
     AuditEvidenceView,
     AuditListView,
     DashboardSummaryView,
+    DashboardStatsView,
     AuditSnapshotCreateView,
     AuditSnapshotListView,
     AuditSnapshotDetailView,
@@ -39,6 +40,7 @@ urlpatterns = [
     
     # Executive dashboard summary with aggregated stats
     path('dashboard/summary/', DashboardSummaryView.as_view(), name='dashboard-summary'),
+    path('dashboard/stats/', DashboardStatsView.as_view(), name='dashboard-stats'),
 
     # Snapshots
     path('<uuid:audit_id>/snapshots/', AuditSnapshotListView.as_view(), name='audit-snapshot-list'),
