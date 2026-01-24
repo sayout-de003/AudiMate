@@ -1,0 +1,44 @@
+{% if findings %}
+<table class="evidence-table">
+    <thead>
+        <tr>
+            <th style="width: 30%;">Check Name</th>
+            <th style="width: 10%;">Severity</th>
+            <th style="width: 10%;">Status</th>
+            <th style="width: 50%;">Details / Comment</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for finding in findings %}
+        <tr>
+            <td>
+                <strong>{{ finding.question.title }}</strong><br>
+                <span style="font-size: 8pt; color: #777;">{{ finding.question.key }}</span>
+            </td>
+            <td style="text-align: center;">
+                <span class="severity-{{ finding.question.severity|lower }}">{{ finding.question.severity }}</span>
+            </td>
+            <td style="text-align: center;">
+                {% if finding.status == 'PASS' %}
+                <span class="status-pass">PASS</span>
+                {% elif finding.status == 'FAIL' %}
+                <span class="status-fail">FAIL</span>
+                {% else %}
+                <span class="status-error">{{ finding.status }}</span>
+                {% endif %}
+            </td>
+            <td>
+                {{ finding.comment|default:"No details provided."|linebreaksbr }}
+                <br>
+                <div style="font-size: 8pt; color: #999; margin-top: 4px;">Verified: {{ finding.created_at|date:"Y-m-d
+                    H:i" }}</div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="no-findings">
+    No evidence collected for this audit.
+</div>
+{% endif %}

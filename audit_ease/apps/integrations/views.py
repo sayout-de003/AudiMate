@@ -1,4 +1,6 @@
 import logging
+import secrets
+from django.http import HttpResponseForbidden
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -8,6 +10,7 @@ from django.utils.decorators import method_decorator
 from django.conf import settings
 import hmac
 import hashlib
+from django_ratelimit.decorators import ratelimit
 
 # Import the Integration model we defined previously
 from apps.integrations.models import Integration
@@ -28,13 +31,20 @@ class GithubConnectView(APIView):
         # Ensure this matches the callback URL registered in your GitHub App settings
         redirect_uri = f"{settings.FRONTEND_URL}/integrations/github/callback" 
         
-        url, state = oauth.get_authorization_url(redirect_uri)
+        # Generate a cryptographically strong random string
+        state = secrets.token_hex(16)
+        # Store this string in the user's session
+        request.session['github_oauth_state'] = state
         
-        # TODO: In a production app, store 'state' in cache/session to verify later 
-        # prevents CSRF attacks.
+        # Get base auth URL
+        url = oauth.get_authorization_url(redirect_uri)
+        
+        # Append state to the URL parameters
+        # valid since oauth.get_authorization_url already adds params with '?'
+        final_url = f"{url}&state={state}"
         
         return Response({
-            "authorization_url": url, 
+            "authorization_url": final_url, 
             "state": state
         })
 
@@ -75,6 +85,16 @@ class GithubCallbackView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        # 1. CSRF / State Verification
+        state_from_get = request.query_params.get('state')
+        stored_state = request.session.get('github_oauth_state')
+
+        if not stored_state or state_from_get != stored_state:
+            return HttpResponseForbidden("CSRF Verification Failed.")
+        
+        # Clean up session
+        del request.session['github_oauth_state']
+
         code = request.data.get("code")
         
         if not code:
@@ -168,6 +188,7 @@ class GitHubWebhookView(APIView):
     """
     permission_classes = [AllowAny]  # Webhooks don't have user context
     
+    @method_decorator(ratelimit(key='ip', rate='100/m', method='POST', block=True))
     @method_decorator(csrf_exempt)
     def dispatch(self, *args, **kwargs):
         return super().dispatch(*args, **kwargs)

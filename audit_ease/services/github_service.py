@@ -329,6 +329,21 @@ class GitHubService:
             # Non-critical, return empty list to result in Fail for existence checks
             return []
 
+    def get_collaborators(self, repo_full_name: str) -> list:
+        """
+        Fetches the list of collaborators for a repository.
+        """
+        url = f"{self.BASE_URL}/repos/{repo_full_name}/collaborators"
+        # Note: We do NOT catch exceptions here because the AccessControlRule 
+        # specifically needs to catch 403/401/404 itself as per requirements.
+        # However, to be safe and consistent with other methods, we might want to wrap generic ones.
+        # But the requirement says "Wrap the GitHub API call... in a try...except block... Catch requests.exceptions.HTTPError" in the RULE.
+        # So we should let HTTPError bubble up.
+        
+        response = self.session.get(url, timeout=self.TIMEOUT)
+        response.raise_for_status()
+        return response.json()
+
 
 
 # import requests

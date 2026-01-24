@@ -67,16 +67,21 @@ DJANGO_APPS = [
 
 THIRD_PARTY_APPS = [
     "rest_framework",
+    "rest_framework.authtoken",
     "rest_framework_simplejwt",
     "corsheaders",
     "django_celery_results",  # Stores celery tasks in DB if needed
     # "django_extensions",    # Optional: useful for shell_plus
     "drf_spectacular",
     "auditlog",
+    "storages",
     "allauth",
     "allauth.account",
     "allauth.socialaccount",
     "allauth.socialaccount.providers.github",
+    "allauth.socialaccount.providers.google",
+    "dj_rest_auth",
+    "dj_rest_auth.registration",
 ]
 
 LOCAL_APPS = [
@@ -145,6 +150,31 @@ STATICFILES_DIRS = [str(BASE_DIR / "static")]
 MEDIA_URL = "/media/"
 MEDIA_ROOT = str(BASE_DIR / "media")
 
+# 11.6 Storage Configuration
+USE_S3 = env.bool("USE_S3", default=False)
+
+if USE_S3:
+    # AWS Settings
+    AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY")
+    AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME")
+    AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default="us-east-1")
+    AWS_S3_SIGNATURE_VERSION = "s3v4"
+    
+    # S3 Storage Backend
+    DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+else:
+    DEFAULT_FILE_STORAGE = "django.core.files.storage.FileSystemStorage"
+
+# 11.5 Email Configuration
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend" # env("EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = env("EMAIL_HOST", default="localhost")
+EMAIL_PORT = env.int("EMAIL_PORT", default=25)
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=False)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@auditmate.com")
+
 # 12. Celery Configuration
 if USE_TZ:
     CELERY_TIMEZONE = TIME_ZONE
@@ -198,7 +228,9 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'anon': '100/day',   # Strict: Block bots/scrapers
         'user': '1000/hour', # Standard: Approx 16 requests/minute
-    }
+        'pdf_generation': '5/min',
+    },
+    'EXCEPTION_HANDLER': 'utils.exceptions.custom_exception_handler',
 }
 
 # 14. JWT Settings
@@ -211,7 +243,22 @@ SIMPLE_JWT = {
 }
 
 # 14.5 AllAuth Configuration
+# AllAuth Configuration
 SITE_ID = 1
+
+# AllAuth Settings for Custom User Model
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_USERNAME_REQUIRED = False
+ACCOUNT_AUTHENTICATION_METHOD = 'email'
+ACCOUNT_AUTHENTICATION_METHOD = 'email'
+ACCOUNT_EMAIL_VERIFICATION = 'optional' # or 'mandatory' if you want to enforce it
+
+# Rate Limiting
+ACCOUNT_RATE_LIMITS = {
+    'login_failed': '5/m', 
+    'signup': '10/h'
+}
 
 AUTHENTICATION_BACKENDS = [
     # Needed to login by username in Django admin, regardless of `allauth`
@@ -227,7 +274,28 @@ SOCIALACCOUNT_PROVIDERS = {
             'user:email',
             'read:org', # Needed to verify organization membership
         ],
+    },
+    'google': {
+        'SCOPE': [
+            'profile',
+            'email',
+        ],
+        'AUTH_PARAMS': {
+            'access_type': 'online',
+        },
+        'APP': {
+            'client_id': env('GOOGLE_CLIENT_ID', default=''),
+            'secret': env('GOOGLE_CLIENT_SECRET', default=''),
+        }
     }
+}
+
+# DJ-REST-AUTH Settings
+REST_AUTH = {
+    'SESSION_LOGIN': False,
+    'USE_JWT': True,
+    'JWT_AUTH_COOKIE': 'audit-auth',
+    'JWT_AUTH_REFRESH_COOKIE': 'audit-refresh-token',
 }
 
 # Add AllAuth apps to INSTALLED_APPS (Appending to existing list)
@@ -238,6 +306,11 @@ LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
+        "json": {
+            "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
+            "format": "%(asctime)s %(levelname)s %(message)s",
+            "datefmt": "%Y-%m-%dT%H:%M:%SZ",
+        },
         "verbose": {
             "format": "{levelname} {asctime} {module} {process:d} {thread:d} {message}",
             "style": "{",
@@ -245,12 +318,26 @@ LOGGING = {
     },
     "handlers": {
         "console": {
-            "level": "DEBUG",
+            "level": "INFO",
             "class": "logging.StreamHandler",
-            "formatter": "verbose",
+            "formatter": "json",
+            "stream": sys.stdout,
         },
     },
     "root": {"level": "INFO", "handlers": ["console"]},
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        # Ensure your apps are logged
+        "apps": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
 }
 
 # 16. App Specific Settings & Environment Validation
@@ -355,7 +442,7 @@ CORS_ALLOWED_ORIGINS = env.list(
 
 ALLOWED_HOSTS = env.list(
     "DJANGO_ALLOWED_HOSTS",
-    default=["localhost", "127.0.0.1"]
+    default=["localhost", "127.0.0.1", "testserver"]
 )
 
 # Security middleware settings (enforce in production)
@@ -372,11 +459,7 @@ if not DEBUG:
 
 
 # Celery Configuration Options
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
-CELERY_ACCEPT_CONTENT = ['application/json']
-CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TASK_SERIALIZER = 'json'
+
 
 
 

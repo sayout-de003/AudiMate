@@ -35,9 +35,8 @@ class Audit(models.Model):
         on_delete=models.CASCADE,
         related_name='audits',
         help_text="The organization this audit belongs to. Critical for data isolation.",
-        null=True,
-        blank=True,
-
+        null=False,
+        blank=False,
     )
     triggered_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

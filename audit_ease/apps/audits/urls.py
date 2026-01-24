@@ -15,7 +15,12 @@ from .views import (
     DashboardStatsView,
     AuditSnapshotCreateView,
     AuditSnapshotListView,
+    AuditSnapshotListView,
     AuditSnapshotDetailView,
+    EvidenceCreateView,
+    EvidenceUploadView,
+    EvidenceMilestoneView,
+    SessionFinalizeView,
 )
 from .views_export import export_audit_csv_streaming, ExportAuditReportView
 
@@ -32,7 +37,9 @@ urlpatterns = [
     path('<uuid:audit_id>/', AuditDetailView.as_view(), name='audit-detail'),
     
     # Get evidence/findings from an audit
+    # Get evidence/findings from an audit
     path('<uuid:audit_id>/evidence/', AuditEvidenceView.as_view(), name='audit-evidence'),
+    path('<uuid:audit_id>/evidence/create/', EvidenceCreateView.as_view(), name='audit-evidence-create'),
     
     # Export audit as CSV (Premium feature)
     path('<uuid:audit_id>/export/csv/', export_audit_csv_streaming, name='audit-export-csv'),
@@ -46,5 +53,10 @@ urlpatterns = [
     path('<uuid:audit_id>/snapshots/', AuditSnapshotListView.as_view(), name='audit-snapshot-list'),
     path('<uuid:audit_id>/snapshots/create/', AuditSnapshotCreateView.as_view(), name='audit-snapshot-create'),
     path('snapshots/<int:pk>/', AuditSnapshotDetailView.as_view(), name='audit-snapshot-detail'),
+    
+    # Evidence & Compliance Endpoints (New Terminology)
+    path('evidence/upload/', EvidenceUploadView.as_view(), name='evidence-upload'),
+    path('evidence/milestone/', EvidenceMilestoneView.as_view(), name='evidence-milestone'),
+    path('session/<uuid:pk>/finalize/', SessionFinalizeView.as_view(), name='session-finalize'),
 
 ]

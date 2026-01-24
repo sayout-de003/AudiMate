@@ -7,6 +7,8 @@ from django.utils.text import slugify
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db.models import Q
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 
 class Organization(models.Model):
     """
@@ -22,13 +24,17 @@ class Organization(models.Model):
     
     # Subscription status choices
     SUBSCRIPTION_STATUS_FREE = 'free'
+    SUBSCRIPTION_STATUS_TRIAL = 'trial'
     SUBSCRIPTION_STATUS_ACTIVE = 'active'
+    SUBSCRIPTION_STATUS_PAST_DUE = 'past_due'
     SUBSCRIPTION_STATUS_EXPIRED = 'expired'
     SUBSCRIPTION_STATUS_CANCELED = 'canceled'
     
     SUBSCRIPTION_CHOICES = [
         (SUBSCRIPTION_STATUS_FREE, 'Free'),
+        (SUBSCRIPTION_STATUS_TRIAL, 'Trial'),
         (SUBSCRIPTION_STATUS_ACTIVE, 'Active'),
+        (SUBSCRIPTION_STATUS_PAST_DUE, 'Past Due'),
         (SUBSCRIPTION_STATUS_EXPIRED, 'Expired'),
         (SUBSCRIPTION_STATUS_CANCELED, 'Canceled'),
     ]
@@ -77,6 +83,19 @@ class Organization(models.Model):
         blank=True,
         help_text="When the subscription expires or ends"
     )
+    trial_start_date = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the 15-day trial started"
+    )
+
+    @property
+    def is_in_trial(self) -> bool:
+        """Check if organization is currently in valid trial period."""
+        if not self.trial_start_date:
+            return False
+        # Trial is valid if now < trial_start + 15 days
+        return timezone.now() < (self.trial_start_date + timedelta(days=15))
 
     class Meta:
         verbose_name = 'Organization'
@@ -395,3 +414,45 @@ class OrganizationInvite(models.Model):
                     'email': 'This user has already been invited. Invite expires at ' +
                             existing.expires_at.isoformat()
                 })
+
+
+class ActivityLog(models.Model):
+    """
+    Audit trail for important actions within an organization.
+    
+    Examples:
+    - User A invited User B
+    - User A changed Organization Settings
+    - User A deleted User C
+    """
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='activity_logs',
+        db_index=True
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='activity_logs'
+    )
+    action = models.CharField(max_length=255, help_text="Description of the action")
+    
+    # Generic relation to target object (optional)
+    content_type = models.ForeignKey(ContentType, on_delete=models.SET_NULL, null=True, blank=True)
+    object_id = models.CharField(max_length=255, null=True, blank=True)
+    target = GenericForeignKey('content_type', 'object_id')
+    
+    metadata = models.JSONField(default=dict, blank=True, help_text="Additional context")
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['organization', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.actor} {self.action} in {self.organization}"

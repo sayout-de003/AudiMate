@@ -24,6 +24,7 @@ from .rules.cis_benchmark import (
     DismissStaleReviews, RequireLinearHistory,
     CodeOwnersExist
 )
+from .rules.access_control import AccessControlRule
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ COMPLIANCE_CHECK_MAP = {
     'cis_4_3_dismiss_stale': 'check_cis_4_3_dismiss_stale',
     'cis_4_5_linear_history': 'check_cis_4_5_linear_history',
     'cis_5_1_codeowners': 'check_cis_5_1_codeowners',
+    'access_control': 'check_access_control',
 }
 
 class AuditExecutor:
@@ -427,6 +429,18 @@ class AuditExecutor:
             CodeOwnersExist,
             lambda: service.get_repo_tree(repo, 'main', recursive=True) if repo else [],
             "CIS 5.1 CODEOWNERS Check"
+        )
+
+    def check_access_control(self) -> tuple:
+        """
+        Check access control and collaborators.
+        """
+        service = self._get_github_service()
+        repo = service.integration.meta_data.get('repo_name')
+        return self._run_rule(
+            AccessControlRule,
+            lambda: (service, repo) if repo else None,
+            "Access Control Check"
         )
 
     # AWS COMPLIANCE CHECK IMPLEMENTATIONS

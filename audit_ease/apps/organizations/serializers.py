@@ -120,12 +120,7 @@ class OrganizationSerializer(serializers.ModelSerializer):
                 **validated_data
             )
             
-            # Auto-create admin membership for creator
-            Membership.objects.create(
-                user=user,
-                organization=organization,
-                role=Membership.ROLE_ADMIN
-            )
+            # Membership is auto-created by signal apps.organizations.signals.create_owner_membership
         
         return organization
 

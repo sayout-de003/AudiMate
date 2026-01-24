@@ -44,7 +44,12 @@ class IsSameOrganization(permissions.BasePermission):
             return False
         
         # Check if object has an 'organization' attribute
-        if not hasattr(obj, 'organization'):
+        # Check if object has an 'organization' attribute
+        if hasattr(obj, 'organization'):
+            target_org = obj.organization
+        elif isinstance(obj, Organization):
+            target_org = obj
+        else:
             # Fallback for objects that might not be org-linked directly
             return False
         
@@ -52,7 +57,7 @@ class IsSameOrganization(permissions.BasePermission):
         # Check if user has membership in the object's organization
         has_membership = Membership.objects.filter(
             user=request.user,
-            organization=obj.organization
+            organization=target_org
         ).exists()
         
         return has_membership
@@ -86,21 +91,34 @@ class IsOrgAdminOrReadOnly(permissions.BasePermission):
 
 class IsOrgAdmin(permissions.BasePermission):
     """
-    Permission that only allows organization admins.
-    Used for sensitive operations like settings changes, integration setup.
-    CRITICAL: Handles users with multiple organization memberships.
+    Permission that only allows organization admins of the SPECIFIC organization.
+    Checks `org_id` kwarg in the view.
     """
     
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
-        
-        # CRITICAL FIX: Use filter().exists() for multiple memberships
-        has_admin_role = Membership.objects.filter(
+            
+        # Get org_id from view kwargs
+        org_id = view.kwargs.get('org_id') or view.kwargs.get('pk')
+        if not org_id:
+            # If no org_id in URL, maybe check if user is admin of ANY org?
+            # Or deny? For strict security, if this permission is used, it expects an org context.
+            # But let's fallback to "admin of ANY org" if strictly necessary, OR strict deny.
+            # Requirement says: "ensure only users with the role ADMIN within the target organization".
+            # So if no target org, we can't verify.
+            
+            # Use case: List all my organizations? -> That might use a different permission.
+            # Use case: /orgs/{org_id}/admin/... -> Has org_id.
+            
+            return False
+
+        # Check membership with Admin role for this specific org
+        return Membership.objects.filter(
             user=request.user,
+            organization_id=org_id,
             role=Membership.ROLE_ADMIN
         ).exists()
-        return has_admin_role
 
 
 class CanRunAudits(permissions.BasePermission):

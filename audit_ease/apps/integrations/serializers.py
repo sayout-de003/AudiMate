@@ -35,6 +35,14 @@ class IntegrationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Provider not supported in V1. Only 'github' is allowed.")
         return value
 
+    def validate_config(self, value):
+        """
+        Ensure config is a valid JSON object.
+        """
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Config must be a valid JSON object.")
+        return value
+
     def create(self, validated_data):
         """
         Strictly force provider='github' when creating.

@@ -13,14 +13,26 @@ No endpoint exposes data from other organizations.
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework import permissions
+from rest_framework import permissions, generics
+from rest_framework.exceptions import ValidationError
 from apps.organizations.permissions import IsSameOrganization
-from .models import Audit, Evidence, AuditSnapshot
-from .serializers import AuditSerializer, EvidenceSerializer, AuditSnapshotSerializer, AuditSnapshotCreateSerializer, AuditSnapshotDetailSerializer
+from .models import Audit, Evidence, AuditSnapshot, Question
+from .serializers import (
+    AuditSerializer, 
+    EvidenceSerializer, 
+    AuditSnapshotSerializer, 
+    AuditSnapshotCreateSerializer, 
+    AuditSnapshotDetailSerializer, 
+    EvidenceCreateSerializer,
+    EvidenceUploadSerializer,
+    EvidenceMilestoneSerializer
+)
+from apps.core.permissions import HasGeneralAccess, CheckTrialQuota
 from .services import create_audit_snapshot
 from apps.audits.services.stats_service import AuditStatsService
 from .logic import run_audit_sync
 from .mixins import RequireGitHubTokenMixin
+from django.shortcuts import render, get_object_or_404
 from django.db.models import Count, Q
 from django.utils import timezone
 from django_ratelimit.decorators import ratelimit
@@ -87,7 +99,7 @@ def run_audit_background(audit_id: str, user_id: int) -> None:
 
 
 @method_decorator(
-    ratelimit(key='user', rate=lambda r: settings.AUDIT_RATE_LIMIT, method='POST', block=True),
+    ratelimit(key='user', rate=lambda g, r: settings.AUDIT_RATE_LIMIT, method='POST', block=True),
     name='dispatch'
 )
 class AuditStartView(RequireGitHubTokenMixin, APIView):
@@ -104,7 +116,7 @@ class AuditStartView(RequireGitHubTokenMixin, APIView):
     - Rate Limiting: 5 audits per hour to prevent API abuse
     - Audit is linked to organization and triggering user
     """
-    permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
+    permission_classes = [permissions.IsAuthenticated, IsSameOrganization, HasGeneralAccess]
 
     def post(self, request):
         """
@@ -170,7 +182,7 @@ class AuditDetailView(APIView):
     
     SECURITY: Can only access audits belonging to user's organization.
     """
-    permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
+    permission_classes = [permissions.IsAuthenticated, IsSameOrganization, HasGeneralAccess]
     
     def get(self, request, audit_id):
         """Get audit details."""
@@ -242,7 +254,7 @@ class AuditListView(APIView):
     
     SECURITY: Automatically filters to organization's audits only.
     """
-    permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
+    permission_classes = [permissions.IsAuthenticated, IsSameOrganization, HasGeneralAccess]
     
     def get(self, request):
         """Get all audits for organization."""
@@ -583,7 +595,179 @@ class DashboardStatsView(APIView):
             }
             
             return Response(response_data)
-
+            
         except Exception as e:
             logger.exception(f"Dashboard stats error: {e}")
             return Response({'error': 'Internal Error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class EvidenceCreateView(generics.CreateAPIView):
+    """
+    POST /api/v1/audits/{audit_id}/evidence/create/
+    
+    Manually add evidence to an audit.
+    
+    LIMITS:
+    - Free Plan: Max 50 evidence items per organization.
+    """
+    serializer_class = EvidenceCreateSerializer
+    serializer_class = EvidenceCreateSerializer
+    permission_classes = [permissions.IsAuthenticated, IsSameOrganization, HasGeneralAccess, CheckTrialQuota]
+    
+    def perform_create(self, serializer):
+        user = self.request.user
+        organization = user.get_organization()
+        audit_id = self.kwargs.get('audit_id')
+        
+        # Verify audit belongs to organization
+        audit = get_object_or_404(Audit, id=audit_id, organization=organization)
+        
+        # IMMUTABILITY CHECK
+        if audit.status == 'COMPLETED':
+            raise ValidationError("Session is frozen. Evidence chain is locked.") # Strict compliance rule
+
+        # Trial Limit Check handled by CheckTrialQuota permission
+        
+        serializer.save(audit=audit)
+
+class EvidenceUploadView(APIView):
+    """
+    POST /api/v1/audits/evidence/upload/
+    
+    Upload evidence artifacts (logs, screenshots) to an active session.
+    Strictly enforces "Active State" rules.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
+
+    def post(self, request):
+        serializer = EvidenceUploadSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+        data = serializer.validated_data
+        session_id = data['session_id']
+        evidence_type = data['evidence_type']
+        evidence_data = data['data']
+        
+        organization = request.user.get_organization()
+        
+        try:
+            audit = Audit.objects.get(id=session_id, organization=organization)
+        except Audit.DoesNotExist:
+             return Response({'error': 'Session not found or access denied.'}, status=status.HTTP_404_NOT_FOUND)
+             
+        # IMMUTABILITY CHECK
+        if audit.status == 'COMPLETED':
+             return Response(
+                 {'error': "Session is frozen. Evidence chain is locked."},
+                 status=status.HTTP_403_FORBIDDEN
+             )
+
+        # Create Evidence Artifact
+        # We need to map the generic "upload" to our Evidence model.
+        # Since 'Question' is required for Evidence, but this simple upload endpoint doesn't seem to ask for a question ID, 
+        # I will either need to create a default "Ad-hoc" question or prompt the user.
+        # However, the prompt implies this is a direct action: "Usage: Uploading screenshots... appends to current session timeline."
+        # I'll check if there's a generic question I can use or if I should make 'question' nullable in model (too risky to change model now).
+        # Best approach: Try to find or create a generic "Ad-hoc Evidence" question.
+        
+        # Checking if a generic question exists, if not create one in memory or DB?
+        # Better: Assume there is a generic question or require one. 
+        # The prompt didn't specify Question ID. 
+        # I will create a placeholder Question for "Uploaded Artifacts" if it doesn't exist, safely.
+        
+        question, _ = Question.objects.get_or_create(
+            key='adhoc_upload',
+            defaults={
+                'title': 'Ad-hoc Evidence Artifact',
+                'description': 'Manually uploaded evidence artifact.',
+                'severity': 'MEDIUM'
+            }
+        )
+        
+        evidence = Evidence.objects.create(
+            audit=audit,
+            question=question,
+            status='PASS', # Defaulting to PASS or just INFO? Model only has PASS/FAIL/ERROR. Using PASS as "Received".
+            raw_data={'type': evidence_type, 'content': evidence_data},
+            comment=f"Uploaded {evidence_type} evidence."
+        )
+        
+        return Response(
+            {'message': f"Evidence {evidence.id} successfully appended to Session {audit.id}."},
+            status=status.HTTP_201_CREATED
+        )
+
+class EvidenceMilestoneView(APIView):
+    """
+    POST /api/v1/audits/evidence/milestone/
+    
+    Create a milestone (snapshot) for the session.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
+
+    def post(self, request):
+        serializer = EvidenceMilestoneSerializer(data=request.data)
+        if not serializer.is_valid():
+             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        data = serializer.validated_data
+        session_id = data['session_id']
+        title = data['title']
+        description = data.get('description', '')
+        
+        organization = request.user.get_organization()
+        
+        try:
+             audit = Audit.objects.get(id=session_id, organization=organization)
+        except Audit.DoesNotExist:
+             return Response({'error': 'Session not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Create Snapshot/Milestone
+        # We reuse the existing create_audit_snapshot logic but alias it to "Milestone"
+        try:
+            snapshot = create_audit_snapshot(
+                audit_id=audit.id,
+                user=request.user,
+                name=title
+            )
+            # You might want to store the description somewhere but Snapshot model only has name.
+            # We will append description to name or ignore for now as per existing model limits.
+            
+            return Response(
+                {
+                    'message': f"Milestone '{title}' created.",
+                    'milestone_id': snapshot.id,
+                    'timestamp': snapshot.created_at
+                },
+                status=status.HTTP_201_CREATED
+            )
+        except Exception as e:
+            logger.exception(f"Milestone creation failed: {e}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class SessionFinalizeView(APIView):
+    """
+    POST /api/v1/audits/session/{pk}/finalize/
+    
+    Marks the session as COMPLETED, freezing it.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
+
+    def post(self, request, pk):
+        organization = request.user.get_organization()
+        audit = get_object_or_404(Audit, id=pk, organization=organization)
+        
+        if audit.status == 'COMPLETED':
+             return Response({'message': 'Session is already frozen.'}, status=status.HTTP_200_OK)
+             
+        # Freeze data
+        audit.status = 'COMPLETED'
+        audit.completed_at = timezone.now()
+        audit.save()
+        
+        logger.info(f"Session {audit.id} finalized and frozen by {request.user.email}")
+        
+        return Response(
+            {'message': f"Session {audit.id} is now FROZEN. No further changes allowed."},
+            status=status.HTTP_200_OK
+        )

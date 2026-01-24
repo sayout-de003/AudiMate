@@ -2,16 +2,17 @@
 from django.contrib import admin
 from django.urls import path, include
 from apps.users.views_frontend import UserProfileView
+from rest_framework.routers import SimpleRouter, DefaultRouter
 
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularSwaggerView,
     SpectacularRedocView,
 )
+router = SimpleRouter()
+from config.views import custom_500, health_check
 
-from audit_ease.config.views import custom_500
-
-handler500 = 'audit_ease.config.views.custom_500'
+handler500 = 'config.views.custom_500'
 
 from django.contrib.admin.views.decorators import staff_member_required
 
@@ -39,6 +40,9 @@ urlpatterns = [
         name="redoc",
     ),
 
+    # Health Check
+    path("health/", health_check, name="health_check"),
+
     # Delegate all API routes to their respective apps
     path("api/v1/", include("apps.users.urls")),
     path("api/v1/", include("apps.organizations.urls")),
@@ -46,11 +50,14 @@ urlpatterns = [
     path("api/v1/audits/", include("apps.audits.urls")),
     path("api/v1/reports/", include("apps.reports.urls")),
     path("api/v1/billing/", include("apps.billing.urls")),
-    path("api/v1/billing/", include("apps.billing.urls")),
     path("debug-sentry/", trigger_error),
 
     # AllAuth URLs
     path("accounts/", include("allauth.urls")),
+    
+    # DJ-REST-AUTH URLs
+    path("api/v1/auth/", include("dj_rest_auth.urls")),
+    path("api/v1/auth/registration/", include("dj_rest_auth.registration.urls")),
 
     # Frontend Views
     path("settings/audit-log/", include("apps.organizations.urls_frontend")),

@@ -6,6 +6,7 @@ Uses Fernet for symmetric encryption with support for key rotation.
 """
 
 import logging
+import requests
 from django.db import models
 from django.conf import settings
 from cryptography.fernet import Fernet, InvalidToken
@@ -32,8 +33,8 @@ class Integration(models.Model):
         Organization, 
         on_delete=models.CASCADE, 
         related_name="integrations",
-        null=True,
-        blank=True,
+        null=False,
+        blank=False,
     )
     created_by = models.ForeignKey(
         User, 
@@ -173,17 +174,43 @@ class Integration(models.Model):
     def validate_integration(self) -> bool:
         """
         Validate that the integration has valid credentials.
-        This would call the provider's API to verify the token.
+        This calls the GitHub API to verify the token.
         """
         if not self.access_token:
             logger.warning(f"Integration {self.id} has no access token")
             return False
-        
-        # TODO: Implement provider-specific validation
-        # For GitHub: call /user endpoint
-        # For GitLab: similar check
-        # For Jira: authenticate and check
-        return True
+            
+        try:
+            # Decrypt the token
+            token = self.access_token
+            
+            # Make a lightweight GET request to GitHub API
+            headers = {'Authorization': f'token {token}'}
+            # Set a timeout to prevent hanging
+            response = requests.get('https://api.github.com/user', headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                self.status = self.StatusChoices.ACTIVE
+                self.save()
+                return True
+                
+            elif response.status_code == 401:
+                logger.warning(f"Integration {self.id} token invalid/revoked (401).")
+                self.status = self.StatusChoices.ERROR  # Using ERROR to represent revoked/invalid state
+                self.save()
+                return False
+                
+            else:
+                # GitHub is down or other error - log but don't change status
+                logger.error(f"GitHub API validation failed for Integration {self.id}. Status: {response.status_code}")
+                return False
+                
+        except requests.RequestException as e:
+            logger.error(f"Network error validating Integration {self.id}: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error validating Integration {self.id}: {e}")
+            return False
 
 
 

@@ -1,5 +1,6 @@
 from django.template.loader import render_to_string
 from weasyprint import HTML
+from django.utils import timezone
 import io
 
 def generate_audit_pdf(audit_instance, findings_list):
@@ -18,6 +19,7 @@ def generate_audit_pdf(audit_instance, findings_list):
     context = {
         'audit': audit_instance,
         'findings': findings_list,
+        'report_date': timezone.now(),
     }
     
     html_string = render_to_string('reports/audit_report.html', context)

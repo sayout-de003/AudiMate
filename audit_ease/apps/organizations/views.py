@@ -25,6 +25,8 @@ from django.views.decorators.cache import cache_page
 from django.views.generic import ListView
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from auditlog.models import LogEntry
+from django.core.mail import send_mail
+from django.conf import settings
 import logging
 
 from .models import Organization, Membership, OrganizationInvite
@@ -73,6 +75,15 @@ class OrganizationViewSet(viewsets.ModelViewSet):
         permissions.IsAuthenticated,
         IsSameOrganization,
     ]
+
+    def get_permissions(self):
+        """
+        Instantiates and returns the list of permissions that this view requires.
+        exclude IsSameOrganization for create action.
+        """
+        if self.action == 'create':
+            return [permissions.IsAuthenticated()]
+        return [permission() for permission in self.permission_classes]
 
     def get_serializer_class(self):
         """Return detailed serializer for retrieve, update actions."""
@@ -206,9 +217,18 @@ class OrganizationViewSet(viewsets.ModelViewSet):
             f"by {user.email} with role {invite.role}"
         )
         
-        # TODO: Send email notification to invite.email with token
-        # For now, just log
-        logger.debug(f"[MOCK] Email sent to {invite.email}. Token: {invite.token}")
+        # Send email notification
+        invite_url = f"{settings.FRONTEND_URL}/join/{invite.token}"
+        
+        send_mail(
+            subject="You've been invited to join Auditmate",
+            message=f"You have been invited to join the organization. Click here to accept: {invite_url}",
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[invite.email],
+            fail_silently=False,
+        )
+        
+        logger.info(f"Invitation email sent to {invite.email}")
         
         return Response(
             OrganizationInviteSerializer(invite).data,

@@ -31,117 +31,88 @@ from rest_framework.views import APIView
 logger = logging.getLogger(__name__)
 
 
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, IsSameOrganization, HasActiveSubscription])
 def export_audit_csv(request, audit_id):
     """
-    Export Audit Results as CSV
+    Export Audit Results as CSV (Streaming Version)
     
-    GET /api/v1/audits/{audit_id}/export/csv/
-    
-    Security:
-    - User must be authenticated
-    - User must belong to the audit's organization
-    - Organization must have an active subscription
-    
-    Returns:
-    - Streaming CSV file with audit evidence
-    - Content-Disposition: attachment (downloads as file)
-    - Filename: audit_{audit_id}_{timestamp}.csv
-    
-    Columns:
-    - Resource ID: The resource being audited
-    - Check Name: Question/check identifier
-    - Status: PASS/FAIL/ERROR
-    - Severity: CRITICAL/HIGH/MEDIUM/LOW
-    - Timestamp: When the evidence was collected
-    - Comment: Human-readable summary
-    
-    Error Responses:
-    - 404: Audit not found
-    - 403: User doesn't have access to this audit
-    - 403: "Upgrade to Premium to export data" (no active subscription)
+    Optimized for large datasets using proper CSV streaming.
     """
     
     try:
         # Fetch the audit
         audit = get_object_or_404(Audit, id=audit_id)
         
-        # Permission check: IsSameOrganization via has_object_permission
+        # Permission checks
         if not audit.organization.members.filter(user=request.user).exists():
             return Response(
                 {"error": "You don't have access to this audit"},
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        # Permission check: HasActiveSubscription (enforced by decorator, but verify)
         if audit.organization.subscription_status != 'active':
             return Response(
                 {"error": "Upgrade to Premium to export data"},
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        # Fetch all evidence for this audit
-        evidence_list = Evidence.objects.filter(audit=audit).select_related(
-            'question'
-        ).order_by('created_at')
+        logger.info(f"Streaming export for audit {audit_id}")
         
-        # If no evidence found, still return empty CSV with headers
-        if not evidence_list.exists():
-            logger.info(f"Exporting empty audit {audit_id}")
-        else:
-            logger.info(
-                f"Exporting {evidence_list.count()} evidence items "
-                f"for audit {audit_id}"
-            )
-        
-        # Generator function for streaming CSV
-        def generate_csv():
-            """Yield CSV rows as they are generated (memory efficient)"""
+        def stream_generator():
+            """Yield CSV lines as a generator"""
+            import io
             
-            # Create CSV writer (writing to memory buffer)
-            writer_output = []
-            writer = csv.writer(writer_output)
+            buffer = io.StringIO()
+            writer = csv.writer(buffer)
             
             # Write headers
-            headers = [
+            writer.writerow([
                 'Resource ID',
                 'Check Name',
                 'Status',
                 'Severity',
                 'Timestamp',
                 'Comment'
-            ]
-            writer.writerow(headers)
-            yield ','.join(headers) + '\r\n'
+            ])
+            yield buffer.getvalue()
+            buffer.seek(0)
+            buffer.truncate(0)
             
-            # Write data rows
-            for evidence in evidence_list:
-                row = [
-                    evidence.question.key or '',  # Resource ID
-                    evidence.question.title or '',  # Check Name
-                    evidence.status or '',  # Status
-                    evidence.question.severity or '',  # Severity
-                    evidence.created_at.isoformat() if evidence.created_at else '',  # Timestamp
-                    evidence.comment or '',  # Comment
-                ]
-                
-                # Write using csv.writer to handle escaping
-                writer = csv.writer([])
-                writer = csv.writer(writer_output)
-                writer.writerow(row)
-                
-                # Get the CSV string representation
-                if writer_output:
-                    line = writer_output.pop()
-                    yield line
+            # --- FIX IS HERE ---
+            # 1. Query is defined INSIDE the generator
+            # 2. We use .iterator(chunk_size=2000) to fetch in small batches
+            evidence_iterator = Evidence.objects.filter(audit=audit).select_related(
+                'question'
+            ).order_by('created_at').values(
+                'question__key',
+                'question__title',
+                'question__severity',
+                'status',
+                'created_at',
+                'comment'
+            ).iterator(chunk_size=2000)
+            
+            # Write rows
+            for evidence in evidence_iterator:
+                writer.writerow([
+                    evidence.get('question__key', ''),
+                    evidence.get('question__title', ''),
+                    evidence.get('status', ''),
+                    evidence.get('question__severity', ''),
+                    evidence.get('created_at', ''),
+                    evidence.get('comment', ''),
+                ])
+                yield buffer.getvalue()
+                buffer.seek(0)
+                buffer.truncate(0)
         
-        # Create the streaming response
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'audit_{audit_id}_{timestamp}.csv'
         
         response = StreamingHttpResponse(
-            generate_csv_proper(),
+            stream_generator(),
             content_type='text/csv'
         )
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
@@ -149,17 +120,138 @@ def export_audit_csv(request, audit_id):
         return response
     
     except Audit.DoesNotExist:
-        logger.warning(f"Audit {audit_id} not found")
+        logger.warning(f"Audit {audit_id} not found for export")
         return Response(
             {"error": "Audit not found"},
             status=status.HTTP_404_NOT_FOUND
         )
     except Exception as e:
-        logger.error(f"Error exporting audit {audit_id}: {str(e)}")
+        logger.error(f"Error streaming audit {audit_id}: {e}")
         return Response(
             {"error": "Failed to export audit"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+
+
+
+
+
+
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated, IsSameOrganization, HasActiveSubscription])
+# def export_audit_csv(request, audit_id):
+#     """
+#     Export Audit Results as CSV
+    
+#     GET /api/v1/audits/{audit_id}/export/csv/
+    
+#     Security:
+#     - User must be authenticated
+#     - User must belong to the audit's organization
+#     - Organization must have an active subscription
+    
+#     Returns:
+#     - Streaming CSV file with audit evidence
+#     - Content-Disposition: attachment (downloads as file)
+#     - Filename: audit_{audit_id}_{timestamp}.csv
+    
+#     Columns:
+#     - Resource ID: The resource being audited
+#     - Check Name: Question/check identifier
+#     - Status: PASS/FAIL/ERROR
+#     - Severity: CRITICAL/HIGH/MEDIUM/LOW
+#     - Timestamp: When the evidence was collected
+#     - Comment: Human-readable summary
+    
+#     Error Responses:
+#     - 404: Audit not found
+#     - 403: User doesn't have access to this audit
+#     - 403: "Upgrade to Premium to export data" (no active subscription)
+#     """
+    
+#     try:
+#         # Fetch the audit
+#         audit = get_object_or_404(Audit, id=audit_id)
+        
+#         # Permission check: IsSameOrganization via has_object_permission
+#         if not audit.organization.members.filter(user=request.user).exists():
+#             return Response(
+#                 {"error": "You don't have access to this audit"},
+#                 status=status.HTTP_403_FORBIDDEN
+#             )
+        
+#         # Permission check: HasActiveSubscription (enforced by decorator, but verify)
+#         if audit.organization.subscription_status != 'active':
+#             return Response(
+#                 {"error": "Upgrade to Premium to export data"},
+#                 status=status.HTTP_403_FORBIDDEN
+#             )
+            
+#         logger.info(f"Starting streaming CSV export for audit {audit_id}")
+
+#         def generate_csv_rows():
+#             """Yield CSV rows using a StringIO buffer to avoid building the whole file in memory."""
+#             buffer = io.StringIO()
+#             writer = csv.writer(buffer)
+            
+#             # Write Header
+#             writer.writerow([
+#                 'Resource ID',
+#                 'Check Name',
+#                 'Status',
+#                 'Severity',
+#                 'Timestamp',
+#                 'Comment'
+#             ])
+#             yield buffer.getvalue()
+#             buffer.seek(0)
+#             buffer.truncate(0)
+
+#             # Efficiently iterate over evidence
+#             # Use iterator() to fetch rows in chunks from the DB
+#             evidence_iterator = Evidence.objects.filter(audit=audit).select_related(
+#                 'question'
+#             ).order_by('created_at').iterator(chunk_size=1000)
+
+#             for evidence in evidence_iterator:
+#                 writer.writerow([
+#                     evidence.question.key or '',
+#                     evidence.question.title or '',
+#                     evidence.status or '',
+#                     evidence.question.severity or '',
+#                     evidence.created_at.isoformat() if evidence.created_at else '',
+#                     evidence.comment or '',
+#                 ])
+#                 yield buffer.getvalue()
+#                 buffer.seek(0)
+#                 buffer.truncate(0)
+
+#         # Create the streaming response
+#         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+#         filename = f'audit_{audit_id}_{timestamp}.csv'
+        
+#         response = StreamingHttpResponse(
+#             generate_csv_rows(),
+#             content_type='text/csv'
+#         )
+#         response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+#         return response
+    
+#     except Audit.DoesNotExist:
+#         logger.warning(f"Audit {audit_id} not found")
+#         return Response(
+#             {"error": "Audit not found"},
+#             status=status.HTTP_404_NOT_FOUND
+#         )
+#     except Exception as e:
+#         logger.error(f"Error exporting audit {audit_id}: {str(e)}")
+#         return Response(
+#             {"error": "Failed to export audit"},
+#             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+#         )
 
 
 def generate_csv_proper():

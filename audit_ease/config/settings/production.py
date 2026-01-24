@@ -28,14 +28,7 @@ CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=["https://audit-
 MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
-# 6. Email (SMTP Configuration)
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-EMAIL_HOST = env("DJANGO_EMAIL_HOST", default="smtp.sendgrid.net")
-EMAIL_PORT = env.int("DJANGO_EMAIL_PORT", default=587)
-EMAIL_USE_TLS = env.bool("DJANGO_EMAIL_USE_TLS", default=True)
-EMAIL_HOST_USER = env("DJANGO_EMAIL_HOST_USER", default="")
-EMAIL_HOST_PASSWORD = env("DJANGO_EMAIL_HOST_PASSWORD", default="")
-DEFAULT_FROM_EMAIL = env("DJANGO_DEFAULT_FROM_EMAIL", default="Audit Ease <noreply@audit-ease.com>")
+
 
 # 7. Logging (Sentry or JSON logging recommended here)
 # For now, we ensure errors are logged explicitly

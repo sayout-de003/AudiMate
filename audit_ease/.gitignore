@@ -299,3 +299,40 @@ db.sqlite3
 # IDE files with local settings
 .vscode/settings.json
 .idea/workspace.xml
+
+
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+aud/
+../aud/
+
+# Database
+db.sqlite3
+*.sqlite3
+
+# Environment Variables (Security!)
+.env
+.env.*
+
+# OS
+.DS_Store
+
+# Pytest
+.pytest_cache/
+
+
+aud/
+venv/
+env/
+__pycache__/
+*.pyc
+*.sqlite3
+.env
+.DS_Store

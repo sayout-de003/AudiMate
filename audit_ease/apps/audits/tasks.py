@@ -215,7 +215,7 @@ def send_critical_alert_email_task(self, audit_id):
         body = (
             f"Your recent audit of {org_name} detected {critical_count} critical issues. "
             f"Please log in to your dashboard immediately to review these findings.\n\n"
-            f"Dashboard Link: https://audit-ease.com/dashboard/audits/{audit_id}/" # Replace with actual domain if known, else use relative or prompt user
+            f"Dashboard Link: {settings.FRONTEND_URL}/dashboard/audits/{audit_id}/"
         )
 
         from django.core.mail import send_mail
