@@ -18,6 +18,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     
     is_staff = models.BooleanField(default=False)  # For Admin panel access
     is_active = models.BooleanField(default=True)  # Soft delete flag
+    email_verified = models.BooleanField(default=False)  # Email OTP verification status
     date_joined = models.DateTimeField(auto_now_add=True)
 
     USERNAME_FIELD = 'email'

@@ -14,6 +14,7 @@ class OrgContextMiddleware:
     """
     Middleware to extract Organization ID from headers, validate access, 
     and set 'request.organization'.
+    If no header provided, auto-selects the user's first organization.
     """
 
     def __init__(self, get_response):
@@ -23,11 +24,19 @@ class OrgContextMiddleware:
         # 1. Initialize request.organization as None by default
         request.organization = None
 
-        # 2. Skip logic for unauthenticated users (unless you have public org pages)
+        # DEBUG: Print to confirm middleware is running
+        if request.path.startswith('/api/v1/audits'):
+            print(f"🔍 OrgContextMiddleware: User={request.user.is_authenticated}, Path={request.path}")
+
+        # 2. Skip logic for unauthenticated users
         if not request.user.is_authenticated:
             return self.get_response(request)
 
-        # 3. Check for the Header
+        # 3. Import models
+        Organization = apps.get_model('organizations', 'Organization')
+        Membership = apps.get_model('organizations', 'Membership')
+
+        # 4. Check for the Header
         org_id = request.headers.get("X-Organization-ID")
 
         if org_id:
@@ -40,14 +49,9 @@ class OrgContextMiddleware:
                     status=400
                 )
 
-            # 4. Validate Membership and Fetch Organization
-            # We use apps.get_model to avoid circular import issues at module level
-            Organization = apps.get_model('organizations', 'Organization')
-            Membership = apps.get_model('organizations', 'Membership')
-
+            # Validate Membership and Fetch Organization
             try:
                 # Efficiently check if the organization exists AND user is a member
-                # This query assumes you have a Membership model linking User and Organization
                 membership = Membership.objects.select_related('organization').get(
                     user=request.user,
                     organization__id=org_id
@@ -57,12 +61,27 @@ class OrgContextMiddleware:
                 request.organization = membership.organization
                 
             except Membership.DoesNotExist:
-                # Differentiate between "Org doesn't exist" and "User not a member" 
-                # strictly for logging, but return a generic 403/404 to the user for security.
                 logger.warning(f"Unauthorized access attempt: User {request.user.id} tried accessing Org {org_id}")
                 return JsonResponse(
                     {"detail": "Organization not found or you do not have access."}, 
                     status=403
                 )
+        else:
+            # No header provided - auto-select the user's first organization
+            try:
+                membership = Membership.objects.select_related('organization').filter(
+                    user=request.user
+                ).first()
+                
+                if membership:
+                    request.organization = membership.organization
+                    logger.info(f"Auto-selected organization {membership.organization.id} ({membership.organization.name}) for user {request.user.id}")
+                else:
+                    logger.warning(f"No organization membership found for user {request.user.id}")
+                # If no membership found, request.organization stays None
+                # Endpoints can handle this by requiring organization context
+                
+            except Exception as e:
+                logger.error(f"Error auto-selecting organization for user {request.user.id}: {e}")
 
         return self.get_response(request)

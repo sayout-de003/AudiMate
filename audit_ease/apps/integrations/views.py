@@ -27,26 +27,54 @@ class GithubConnectView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        oauth = GitHubOAuth()
-        # Ensure this matches the callback URL registered in your GitHub App settings
-        redirect_uri = f"{settings.FRONTEND_URL}/integrations/github/callback" 
-        
-        # Generate a cryptographically strong random string
-        state = secrets.token_hex(16)
-        # Store this string in the user's session
-        request.session['github_oauth_state'] = state
-        
-        # Get base auth URL
-        url = oauth.get_authorization_url(redirect_uri)
-        
-        # Append state to the URL parameters
-        # valid since oauth.get_authorization_url already adds params with '?'
-        final_url = f"{url}&state={state}"
-        
-        return Response({
-            "authorization_url": final_url, 
-            "state": state
-        })
+        try:
+            # Check if GitHub OAuth credentials are configured
+            if not hasattr(settings, 'GITHUB_CLIENT_ID') or not settings.GITHUB_CLIENT_ID:
+                logger.error("GITHUB_CLIENT_ID is not configured in settings")
+                return Response(
+                    {"error": "GitHub integration is not configured. Please contact your administrator."},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE
+                )
+            
+            if not hasattr(settings, 'GITHUB_CLIENT_SECRET') or not settings.GITHUB_CLIENT_SECRET:
+                logger.error("GITHUB_CLIENT_SECRET is not configured in settings")
+                return Response(
+                    {"error": "GitHub integration is not configured. Please contact your administrator."},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE
+                )
+            
+            oauth = GitHubOAuth()
+            # Ensure this matches the callback URL registered in your GitHub App settings
+            redirect_uri = f"{settings.FRONTEND_URL}/integrations/github/callback" 
+            
+            # Generate a cryptographically strong random string
+            state = secrets.token_hex(16)
+            # Store this string in the user's session
+            request.session['github_oauth_state'] = state
+            
+            # Get base auth URL
+            url = oauth.get_authorization_url(redirect_uri)
+            
+            # Append state to the URL parameters
+            # valid since oauth.get_authorization_url already adds params with '?'
+            final_url = f"{url}&state={state}"
+            
+            return Response({
+                "authorization_url": final_url, 
+                "state": state
+            })
+        except AttributeError as e:
+            logger.error(f"GitHub OAuth configuration error: {e}")
+            return Response(
+                {"error": "GitHub integration is not properly configured."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error in GitHub connect: {e}", exc_info=True)
+            return Response(
+                {"error": "Failed to generate GitHub OAuth URL. Please try again later."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 from rest_framework import viewsets
@@ -102,9 +130,13 @@ class GithubCallbackView(APIView):
 
         oauth = GitHubOAuth()
         
+        # Get the redirect_uri that was used in the authorization request
+        # It must match exactly what was registered in GitHub OAuth App
+        redirect_uri = f"{settings.FRONTEND_URL}/integrations/github/callback"
+        
         # 1. Exchange Code for Access Token
         try:
-            token_data = oauth.exchange_code_for_token(code)
+            token_data = oauth.exchange_code_for_token(code, redirect_uri=redirect_uri)
         except Exception as e:
             logger.error(f"GitHub Token Exchange Failed: {e}")
             return Response({"error": "Failed to connect to GitHub"}, status=status.HTTP_502_BAD_GATEWAY)

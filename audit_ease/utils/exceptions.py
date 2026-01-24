@@ -1,5 +1,5 @@
 from rest_framework.views import exception_handler
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, PermissionDenied
 
 def custom_exception_handler(exc, context):
     """
@@ -24,22 +24,42 @@ def custom_exception_handler(exc, context):
         # Handle Validation Errors specifically
         if isinstance(exc, ValidationError):
             custom_response_data["code"] = "validation_error"
-            custom_response_data["message"] = "Invalid input data."
-            # DRF already formats ValidationError detail as a list or dict, so we keep it.
+            # For ValidationError, response.data is already a dict with field names as keys
+            # Extract a user-friendly message from the first error
+            if isinstance(response.data, dict):
+                # Find the first error message
+                for field, errors in response.data.items():
+                    if isinstance(errors, list) and len(errors) > 0:
+                        custom_response_data["message"] = f"{field}: {errors[0]}"
+                        break
+                    elif isinstance(errors, str):
+                        custom_response_data["message"] = f"{field}: {errors}"
+                        break
+            if custom_response_data["message"] == "An error occurred.":
+                custom_response_data["message"] = "Invalid input data. Please check the form fields."
+            # Keep the original validation errors in detail for frontend to parse
+        
+        # Handle PermissionDenied - use the exception's detail/message if available
+        if isinstance(exc, PermissionDenied):
+            # PermissionDenied.detail contains the message from permission classes
+            if hasattr(exc, 'detail') and exc.detail:
+                custom_response_data["message"] = str(exc.detail)
+            else:
+                custom_response_data["message"] = "You do not have permission to perform this action."
         
         # Map specific codes to more readable messages if needed
         # (You can expand this mapping as needed)
         error_code_map = {
             "AuthenticationFailed": "Authentication failed.",
             "NotAuthenticated": "Authentication credentials were not provided.",
-            "PermissionDenied": "You do not have permission to perform this action.",
+            "PermissionDenied": custom_response_data.get("message", "You do not have permission to perform this action."),
             "NotFound": "The requested resource was not found.",
             "MethodNotAllowed": "Method not allowed for this resource.",
             "Throttled": "Request was throttled."
         }
         
         exception_name = exc.__class__.__name__
-        if exception_name in error_code_map:
+        if exception_name in error_code_map and not isinstance(exc, PermissionDenied):
             custom_response_data["message"] = error_code_map[exception_name]
             
         # Refine the code to be snake_case if it isn't already handled

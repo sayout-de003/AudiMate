@@ -167,7 +167,7 @@ else:
     DEFAULT_FILE_STORAGE = "django.core.files.storage.FileSystemStorage"
 
 # 11.5 Email Configuration
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend" # env("EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
+EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
 EMAIL_HOST = env("EMAIL_HOST", default="localhost")
 EMAIL_PORT = env.int("EMAIL_PORT", default=25)
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=False)
@@ -361,6 +361,10 @@ STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default="whsec_placeholder"
 # Frontend URL for Stripe redirect (success/cancel URLs)
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000")
 
+# GitHub OAuth Configuration (optional - for GitHub integration)
+GITHUB_CLIENT_ID = env("GITHUB_CLIENT_ID", default="")
+GITHUB_CLIENT_SECRET = env("GITHUB_CLIENT_SECRET", default="")
+
 # CRITICAL: Validate that the key exists on production startup
 if not FERNET_KEY:
     # Only raise error if we are NOT in debug mode (optional safety)
@@ -437,7 +441,7 @@ SECRET_KEY = env("DJANGO_SECRET_KEY", default="django-insecure-dev-key-change-in
 # 18. CORS & Security Settings for Production
 CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS",
-    default=["http://localhost:3000", "http://localhost:8000"]
+    default=["http://localhost:3000", "http://localhost:8000", "http://localhost:5173"]
 )
 
 ALLOWED_HOSTS = env.list(

@@ -8,10 +8,16 @@ class GitHubOAuth:
     API_URL = "https://api.github.com"
 
     def __init__(self):
-        self.client_id = settings.GITHUB_CLIENT_ID
-        self.client_secret = settings.GITHUB_CLIENT_SECRET
+        self.client_id = getattr(settings, 'GITHUB_CLIENT_ID', '')
+        self.client_secret = getattr(settings, 'GITHUB_CLIENT_SECRET', '')
         # Scopes: 'repo' gives access to private repos, 'read:org' for org membership
-        self.scope = "repo read:org" 
+        self.scope = "repo read:org"
+        
+        if not self.client_id or not self.client_secret:
+            raise ValueError(
+                "GitHub OAuth credentials are not configured. "
+                "Please set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET in your environment variables."
+            ) 
 
     def get_authorization_url(self, redirect_uri=None):
         """Generates the URL to send the user to GitHub."""
@@ -25,7 +31,7 @@ class GitHubOAuth:
             
         return f"{self.AUTH_URL}?{urlencode(params)}"
 
-    def exchange_code_for_token(self, code):
+    def exchange_code_for_token(self, code, redirect_uri=None):
         """Swaps the temporary code for a permanent access token."""
         headers = {"Accept": "application/json"}
         payload = {
@@ -33,6 +39,9 @@ class GitHubOAuth:
             "client_secret": self.client_secret,
             "code": code,
         }
+        # GitHub requires redirect_uri to match exactly what was used in authorization
+        if redirect_uri:
+            payload["redirect_uri"] = redirect_uri
         
         response = requests.post(self.TOKEN_URL, json=payload, headers=headers)
         response.raise_for_status()

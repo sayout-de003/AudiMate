@@ -102,19 +102,20 @@ def run_audit_background(audit_id: str, user_id: int) -> None:
     ratelimit(key='user', rate=lambda g, r: settings.AUDIT_RATE_LIMIT, method='POST', block=True),
     name='dispatch'
 )
-class AuditStartView(RequireGitHubTokenMixin, APIView):
+class AuditStartView(APIView):
     """
-    POST /api/v1/audits/start/
+    POST /api/v1/aud its/start/
     
     Starts a new security audit for the requesting user's organization.
     Rate Limited: 5 audits per hour per user (configurable via AUDIT_RATE_LIMIT setting).
     
     SECURITY:
-    - RequireGitHubTokenMixin: Redirects to profile if GitHub not connected.
     - IsSameOrganization: User can only audit their own organization
     - IsAuthenticated: User must be logged in
     - Rate Limiting: 5 audits per hour to prevent API abuse
     - Audit is linked to organization and triggering user
+    
+    NOTE: GitHub integration is optional. Connect GitHub in Integrations page for repository audits.
     """
     permission_classes = [permissions.IsAuthenticated, IsSameOrganization, HasGeneralAccess]
 
