@@ -8,14 +8,23 @@ export interface Audit {
     pass_rate?: number;
 }
 
+export interface Question {
+    id: number;
+    key: string;
+    title: string;
+    description: string;
+    severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+}
+
 export interface Evidence {
     id: number;
-    check_id: string;
+    question: Question;
     status: 'PASS' | 'FAIL' | 'ERROR';
-    resource_id: string;
-    details: any;
-    severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
-    timestamp: string;
+    raw_data: any;
+    comment?: string;
+    created_at: string;
+    screenshot_url: string | null;
+    remediation_steps: string | null;
 }
 
 export const auditsApi = {
@@ -68,6 +77,16 @@ export const auditsApi = {
         formData.append('file', file);
         formData.append('audit_id', auditId);
         const { data } = await api.post('/audits/evidence/upload/', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        return data;
+    },
+
+    uploadEvidenceScreenshot: async (evidenceId: number, file: File) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('evidence_id', evidenceId.toString());
+        const { data } = await api.post(`/audits/evidence/${evidenceId}/upload_screenshot/`, formData, {
             headers: { 'Content-Type': 'multipart/form-data' }
         });
         return data;

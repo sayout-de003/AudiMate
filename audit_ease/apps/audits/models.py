@@ -82,6 +82,9 @@ class Evidence(models.Model):
         null=True,
         help_text="Human-readable summary of the finding"
     )
+    # NEW FIELDS FOR INDUSTRY STANDARD PROOFS
+    screenshot = models.ImageField(upload_to='audit_proofs/%Y/%m/', null=True, blank=True)
+    remediation_steps = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

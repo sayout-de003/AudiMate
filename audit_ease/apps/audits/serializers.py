@@ -31,11 +31,17 @@ class QuestionSerializer(serializers.ModelSerializer):
 
 class EvidenceSerializer(serializers.ModelSerializer):
     question = QuestionSerializer(read_only=True)
+    screenshot_url = serializers.SerializerMethodField()
     
     class Meta:
         model = Evidence
-        fields = ['id', 'question', 'status', 'raw_data', 'comment', 'created_at']
+        fields = ['id', 'question', 'status', 'raw_data', 'comment', 'created_at', 'screenshot_url', 'remediation_steps']
         read_only_fields = ['id', 'created_at']
+
+    def get_screenshot_url(self, obj):
+        if obj.screenshot:
+            return obj.screenshot.url
+        return None
 
     def validate_raw_data(self, value):
         """

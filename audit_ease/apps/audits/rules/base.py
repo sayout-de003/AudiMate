@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any
+from typing import Any, Dict, Optional
 from dataclasses import dataclass
 
 class RiskLevel(Enum):
@@ -14,6 +14,13 @@ class RuleResult:
     passed: bool  # Renamed from 'status' to be more explicit
     details: str
     compliance_mapping: str
+    raw_data: Optional[Dict[str, Any]] = None
+    remediation: Optional[str] = None
+    severity: Optional[str] = None
+
+    @property
+    def status(self):
+        return self.passed
 
 class BaseRule(ABC):
     """
@@ -25,13 +32,19 @@ class BaseRule(ABC):
     risk_level: RiskLevel = RiskLevel.LOW
     compliance_standard: str = "General"
 
+    @property
+    def status(self):
+        return self.passed
+
     @abstractmethod
-    def check(self, context: Any) -> RuleResult:
+    def evaluate(self, context: Any) -> RuleResult:
         """
-        Input: A PyGithub Object (Organization or Repository).
-        Output: RuleResult object
+        Alias for check() to maintain compatibility with logic.py
         """
         pass
+        
+    def check(self, context: Any) -> RuleResult:
+         return self.evaluate(context)
 
 
 # from abc import ABC, abstractmethod

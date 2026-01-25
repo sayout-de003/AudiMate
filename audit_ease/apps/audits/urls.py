@@ -22,7 +22,7 @@ from .views import (
     EvidenceMilestoneView,
     SessionFinalizeView,
 )
-from .views_export import AuditExportCSVView, ExportAuditReportView
+from .views_export import AuditExportCSVView, ExportAuditReportView, AuditExportPDFView
 app_name = 'audits'
 
 urlpatterns = [
@@ -43,6 +43,7 @@ urlpatterns = [
     # Export audit as CSV (Premium feature)
     path('<uuid:audit_id>/export/csv/', AuditExportCSVView.as_view(), name='audit-export-csv'),
     path('<uuid:audit_id>/export/xlsx/', ExportAuditReportView.as_view(), name='audit-export-xlsx'),
+    path('<uuid:audit_id>/export/pdf/', AuditExportPDFView.as_view(), name='audit-export-pdf'),
     
     # Executive dashboard summary with aggregated stats
     path('dashboard/summary/', DashboardSummaryView.as_view(), name='dashboard-summary'),

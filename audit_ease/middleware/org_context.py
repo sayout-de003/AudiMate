@@ -36,8 +36,12 @@ class OrgContextMiddleware:
         Organization = apps.get_model('organizations', 'Organization')
         Membership = apps.get_model('organizations', 'Membership')
 
-        # 4. Check for the Header
+        # 4. Check for the Header or Query Param
         org_id = request.headers.get("X-Organization-ID")
+        
+        # Fallback: Check query params (useful for browser downloads/links)
+        if not org_id:
+            org_id = request.GET.get('org_id') or request.GET.get('organization_id')
 
         if org_id:
             # Validate UUID format to prevent SQL/Database errors before fetching

@@ -21,92 +21,182 @@
   },
   {
     "model": "audits.question",
-    "pk": 3,
-    "fields": {
-      "key": "aws_root_mfa",
-      "title": "AWS Root Account MFA",
-      "description": "Verifies that the root account has MFA enabled.",
-      "severity": "CRITICAL"
-    }
-  },
-  {
-    "model": "audits.question",
-    "pk": 4,
-    "fields": {
-      "key": "s3_public_access",
-      "title": "S3 Buckets Public Access",
-      "description": "Checks for S3 buckets that are open to the public internet.",
-      "severity": "HIGH"
-    }
-  },
-  {
-    "model": "audits.question",
-    "pk": 5,
-    "fields": {
-      "key": "db_encryption",
-      "title": "Database Encryption at Rest",
-      "description": "Ensures RDS/Database instances are encrypted.",
-      "severity": "HIGH"
-    }
-  },
-  {
-    "model": "audits.question",
-    "pk": 6,
-    "fields": {
-      "key": "unused_iam_users",
-      "title": "Unused IAM Users",
-      "description": "Flags IAM users who haven't logged in for 90 days.",
-      "severity": "MEDIUM"
-    }
-  },
-  {
-    "model": "audits.question",
-    "pk": 7,
-    "fields": {
-      "key": "security_groups_22",
-      "title": "Open SSH Port (22)",
-      "description": "Checks for Security Groups allowing 0.0.0.0/0 on port 22.",
-      "severity": "HIGH"
-    }
-  },
-  {
-    "model": "audits.question",
-    "pk": 8,
-    "fields": {
-      "key": "cloudtrail_enabled",
-      "title": "CloudTrail Logging Enabled",
-      "description": "Verifies that CloudTrail is active in all regions.",
-      "severity": "MEDIUM"
-    }
-  },
-  {
-    "model": "audits.question",
-    "pk": 9,
-    "fields": {
-      "key": "https_enforced",
-      "title": "HTTPS Enforced",
-      "description": "Checks if load balancers redirect HTTP to HTTPS.",
-      "severity": "MEDIUM"
-    }
-  },
-  {
-    "model": "audits.question",
-    "pk": 10,
-    "fields": {
-      "key": "admin_mfa",
-      "title": "Admin Access MFA",
-      "description": "Ensures admin panels are behind MFA.",
-      "severity": "LOW"
-    }
-  },
-  {
-    "model": "audits.question",
     "pk": 11,
     "fields": {
       "key": "readme_exists",
       "title": "Missing Documentation",
       "description": "Checks if the repository has a README.md file.",
       "severity": "MEDIUM"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 12,
+    "fields": {
+      "key": "cis_1_4_collaborators",
+      "title": "CIS 1.4: Restrict Outside Collaborators",
+      "description": "Ensure there are no outside collaborators with access to the repository.",
+      "severity": "CRITICAL"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 13,
+    "fields": {
+      "key": "cis_4_4_force_pushes",
+      "title": "CIS 4.4: Prevent Force Pushes",
+      "description": "Ensure force pushes are denied on the default branch.",
+      "severity": "HIGH"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 14,
+    "fields": {
+      "key": "cis_4_5_branch_deletion",
+      "title": "CIS 4.5: Prevent Branch Deletion",
+      "description": "Ensure deletion of the default branch is blocked.",
+      "severity": "HIGH"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 15,
+    "fields": {
+      "key": "cis_4_6_status_checks",
+      "title": "CIS 4.6: Require Status Checks",
+      "description": "Ensure status checks are required to pass before merging.",
+      "severity": "MEDIUM"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 16,
+    "fields": {
+      "key": "gh_gov_license",
+      "title": "GH-GOV-01: License File",
+      "description": "Ensure a LICENSE file exists in the repository.",
+      "severity": "LOW"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 17,
+    "fields": {
+      "key": "cis_1_1_mfa",
+      "title": "CIS 1.1: Enforce MFA",
+      "description": "Ensure multi-factor authentication is required for the organization.",
+      "severity": "CRITICAL"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 18,
+    "fields": {
+      "key": "cis_1_2_stale_admins",
+      "title": "CIS 1.2: Stale Admin Access",
+      "description": "Ensure admins have logged in within the past 90 days.",
+      "severity": "HIGH"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 19,
+    "fields": {
+      "key": "cis_1_3_excessive_owners",
+      "title": "CIS 1.3: Excessive Owners",
+      "description": "Ensure organization has less than 3 owners.",
+      "severity": "MEDIUM"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 20,
+    "fields": {
+      "key": "cis_2_1_secret_scanning",
+      "title": "CIS 2.1: Secret Scanning",
+      "description": "Ensure secret scanning is enabled on the repository.",
+      "severity": "CRITICAL"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 21,
+    "fields": {
+      "key": "cis_2_2_dependabot",
+      "title": "CIS 2.2: Dependabot Enabled",
+      "description": "Ensure Dependabot security updates are enabled.",
+      "severity": "HIGH"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 22,
+    "fields": {
+      "key": "cis_2_5_private_repo",
+      "title": "CIS 2.5: Private Repo Visibility",
+      "description": "Ensure repositories are private (unless public intent).",
+      "severity": "CRITICAL"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 23,
+    "fields": {
+      "key": "cis_3_1_signed_commits",
+      "title": "CIS 3.1: Signed Commits",
+      "description": "Ensure commit signing is required.",
+      "severity": "MEDIUM"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 24,
+    "fields": {
+      "key": "cis_4_1_branch_protection",
+      "title": "CIS 4.1: Branch Protection",
+      "description": "Ensure metadata on branch protection is active.",
+      "severity": "HIGH"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 25,
+    "fields": {
+      "key": "cis_4_2_code_reviews",
+      "title": "CIS 4.2: Require Code Reviews",
+      "description": "Ensure at least one approving review is required.",
+      "severity": "HIGH"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 26,
+    "fields": {
+      "key": "cis_4_3_dismiss_stale",
+      "title": "CIS 4.3: Dismiss Stale Reviews",
+      "description": "Ensure stale reviews are dismissed on new pushes.",
+      "severity": "MEDIUM"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 27,
+    "fields": {
+      "key": "cis_4_5_linear_history",
+      "title": "CIS 4.5: Linear History",
+      "description": "Ensure linear history is enforced.",
+      "severity": "LOW"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 28,
+    "fields": {
+      "key": "cis_5_1_codeowners",
+      "title": "CIS 5.1: CODEOWNERS File",
+      "description": "Ensure CODEOWNERS file is present.",
+      "severity": "LOW"
     }
   }
 ]

@@ -3,268 +3,42 @@ Audit Export API Views
 
 Endpoints:
 - GET /api/v1/audits/{id}/export/csv/ - Export audit results as CSV
+- GET /api/v1/audits/{id}/export/xlsx/ - Export audit results as Excel
+- GET /api/v1/audits/{id}/export/pdf/ - Export audit results as PDF
 """
 
 import csv
 import logging
+import io
 from datetime import datetime
-from django.http import StreamingHttpResponse
+from django.http import StreamingHttpResponse, HttpResponse, FileResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.audits.models import Audit, Evidence
 from apps.organizations.permissions import IsSameOrganization, HasActiveSubscription
 
+# ReportLab Imports
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+except ImportError:
+    pass
+
 # OpenPyXL Imports
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.chart import PieChart, Reference, Series
-from openpyxl.chart.label import DataLabelList
-import io
-from django.http import HttpResponse
-from rest_framework.views import APIView
+from openpyxl.chart import PieChart, PieChart3D, Reference
 
 
 logger = logging.getLogger(__name__)
-
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated, IsSameOrganization, HasActiveSubscription])
-def export_audit_csv(request, audit_id):
-    """
-    Export Audit Results as CSV (Streaming Version)
-    
-    Optimized for large datasets using proper CSV streaming.
-    """
-    
-    try:
-        # Fetch the audit
-        audit = get_object_or_404(Audit, id=audit_id)
-        
-        # Permission checks
-        if not audit.organization.members.filter(user=request.user).exists():
-            return Response(
-                {"error": "You don't have access to this audit"},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        if audit.organization.subscription_status != 'active':
-            return Response(
-                {"error": "Upgrade to Premium to export data"},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        logger.info(f"Streaming export for audit {audit_id}")
-        
-        def stream_generator():
-            """Yield CSV lines as a generator"""
-            import io
-            
-            buffer = io.StringIO()
-            writer = csv.writer(buffer)
-            
-            # Write headers
-            writer.writerow([
-                'Resource ID',
-                'Check Name',
-                'Status',
-                'Severity',
-                'Timestamp',
-                'Comment'
-            ])
-            yield buffer.getvalue()
-            buffer.seek(0)
-            buffer.truncate(0)
-            
-            # --- FIX IS HERE ---
-            # 1. Query is defined INSIDE the generator
-            # 2. We use .iterator(chunk_size=2000) to fetch in small batches
-            evidence_iterator = Evidence.objects.filter(audit=audit).select_related(
-                'question'
-            ).order_by('created_at').values(
-                'question__key',
-                'question__title',
-                'question__severity',
-                'status',
-                'created_at',
-                'comment'
-            ).iterator(chunk_size=2000)
-            
-            # Write rows
-            for evidence in evidence_iterator:
-                writer.writerow([
-                    evidence.get('question__key', ''),
-                    evidence.get('question__title', ''),
-                    evidence.get('status', ''),
-                    evidence.get('question__severity', ''),
-                    evidence.get('created_at', ''),
-                    evidence.get('comment', ''),
-                ])
-                yield buffer.getvalue()
-                buffer.seek(0)
-                buffer.truncate(0)
-        
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'audit_{audit_id}_{timestamp}.csv'
-        
-        response = StreamingHttpResponse(
-            stream_generator(),
-            content_type='text/csv'
-        )
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        
-        return response
-    
-    except Audit.DoesNotExist:
-        logger.warning(f"Audit {audit_id} not found for export")
-        return Response(
-            {"error": "Audit not found"},
-            status=status.HTTP_404_NOT_FOUND
-        )
-    except Exception as e:
-        logger.error(f"Error streaming audit {audit_id}: {e}")
-        return Response(
-            {"error": "Failed to export audit"},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-
-
-
-
-
-
-# @api_view(['GET'])
-# @permission_classes([IsAuthenticated, IsSameOrganization, HasActiveSubscription])
-# def export_audit_csv(request, audit_id):
-#     """
-#     Export Audit Results as CSV
-    
-#     GET /api/v1/audits/{audit_id}/export/csv/
-    
-#     Security:
-#     - User must be authenticated
-#     - User must belong to the audit's organization
-#     - Organization must have an active subscription
-    
-#     Returns:
-#     - Streaming CSV file with audit evidence
-#     - Content-Disposition: attachment (downloads as file)
-#     - Filename: audit_{audit_id}_{timestamp}.csv
-    
-#     Columns:
-#     - Resource ID: The resource being audited
-#     - Check Name: Question/check identifier
-#     - Status: PASS/FAIL/ERROR
-#     - Severity: CRITICAL/HIGH/MEDIUM/LOW
-#     - Timestamp: When the evidence was collected
-#     - Comment: Human-readable summary
-    
-#     Error Responses:
-#     - 404: Audit not found
-#     - 403: User doesn't have access to this audit
-#     - 403: "Upgrade to Premium to export data" (no active subscription)
-#     """
-    
-#     try:
-#         # Fetch the audit
-#         audit = get_object_or_404(Audit, id=audit_id)
-        
-#         # Permission check: IsSameOrganization via has_object_permission
-#         if not audit.organization.members.filter(user=request.user).exists():
-#             return Response(
-#                 {"error": "You don't have access to this audit"},
-#                 status=status.HTTP_403_FORBIDDEN
-#             )
-        
-#         # Permission check: HasActiveSubscription (enforced by decorator, but verify)
-#         if audit.organization.subscription_status != 'active':
-#             return Response(
-#                 {"error": "Upgrade to Premium to export data"},
-#                 status=status.HTTP_403_FORBIDDEN
-#             )
-            
-#         logger.info(f"Starting streaming CSV export for audit {audit_id}")
-
-#         def generate_csv_rows():
-#             """Yield CSV rows using a StringIO buffer to avoid building the whole file in memory."""
-#             buffer = io.StringIO()
-#             writer = csv.writer(buffer)
-            
-#             # Write Header
-#             writer.writerow([
-#                 'Resource ID',
-#                 'Check Name',
-#                 'Status',
-#                 'Severity',
-#                 'Timestamp',
-#                 'Comment'
-#             ])
-#             yield buffer.getvalue()
-#             buffer.seek(0)
-#             buffer.truncate(0)
-
-#             # Efficiently iterate over evidence
-#             # Use iterator() to fetch rows in chunks from the DB
-#             evidence_iterator = Evidence.objects.filter(audit=audit).select_related(
-#                 'question'
-#             ).order_by('created_at').iterator(chunk_size=1000)
-
-#             for evidence in evidence_iterator:
-#                 writer.writerow([
-#                     evidence.question.key or '',
-#                     evidence.question.title or '',
-#                     evidence.status or '',
-#                     evidence.question.severity or '',
-#                     evidence.created_at.isoformat() if evidence.created_at else '',
-#                     evidence.comment or '',
-#                 ])
-#                 yield buffer.getvalue()
-#                 buffer.seek(0)
-#                 buffer.truncate(0)
-
-#         # Create the streaming response
-#         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-#         filename = f'audit_{audit_id}_{timestamp}.csv'
-        
-#         response = StreamingHttpResponse(
-#             generate_csv_rows(),
-#             content_type='text/csv'
-#         )
-#         response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        
-#         return response
-    
-#     except Audit.DoesNotExist:
-#         logger.warning(f"Audit {audit_id} not found")
-#         return Response(
-#             {"error": "Audit not found"},
-#             status=status.HTTP_404_NOT_FOUND
-#         )
-#     except Exception as e:
-#         logger.error(f"Error exporting audit {audit_id}: {str(e)}")
-#         return Response(
-#             {"error": "Failed to export audit"},
-#             status=status.HTTP_500_INTERNAL_SERVER_ERROR
-#         )
-
-
-def generate_csv_proper():
-    """
-    Generator for streaming CSV without buffering.
-    More memory efficient than building the entire response in memory.
-    """
-    import io
-    
-    # Create a generator that yields lines
-    yield "Resource ID,Check Name,Status,Severity,Timestamp,Comment\r\n"
-    
-    # This will be populated from the view
 
 
 class AuditExportCSVView(APIView):
@@ -272,27 +46,14 @@ class AuditExportCSVView(APIView):
     Export Audit Results as CSV (Streaming Version)
     
     Optimized for large datasets using proper CSV streaming.
-    
-    SECURITY FIX: 
-    - Rely on Object Level Permissions (audit.organization) 
-    - Do NOT rely on header-based middleware (request.organization)
     """
-    permission_classes = [IsAuthenticated]
-
-    def get_object(self, audit_id):
-        """Helper to get object and enforce permissions consistently"""
-        audit = get_object_or_404(Audit, id=audit_id)
-        
-        # Verify access: User must be member of the audit's organization
-        if not audit.organization.members.filter(user=self.request.user).exists():
-            self.permission_denied(self.request, message="You don't have access to this audit")
-            
-        return audit
+    permission_classes = [IsAuthenticated, IsSameOrganization]
 
     def get(self, request, audit_id):
         try:
             # 1. Fetch Audit & Verify Permissions
-            audit = self.get_object(audit_id)
+            audit = get_object_or_404(Audit, id=audit_id)
+            self.check_object_permissions(request, audit)
             
             # 2. Subscription Check
             if audit.organization.subscription_status != 'active':
@@ -309,11 +70,12 @@ class AuditExportCSVView(APIView):
                 'question__title',
                 'question__severity',
                 'status',
-                'created_at',
-                'comment'
+                'raw_data',
+                'comment',
+                'remediation_steps'
             )
             
-            logger.info(f"Streaming export for audit {audit_id}")
+            logger.info(f"Streaming CSV export for audit {audit_id}")
             
             def stream_generator():
                 """Yield CSV lines as a generator"""
@@ -324,12 +86,11 @@ class AuditExportCSVView(APIView):
                 
                 # Write headers
                 writer.writerow([
-                    'Resource ID',
+                    'Repository',
                     'Check Name',
                     'Status',
                     'Severity',
-                    'Timestamp',
-                    'Comment'
+                    'Remediation'
                 ])
                 yield buffer.getvalue()
                 buffer.truncate(0)
@@ -337,20 +98,28 @@ class AuditExportCSVView(APIView):
                 
                 # Write rows
                 for evidence in evidence_list:
+                    # Extract Resource from raw_data
+                    raw = evidence.get('raw_data', {})
+                    resource = "N/A"
+                    if isinstance(raw, dict):
+                        resource = raw.get('repo_name') or raw.get('org_name') or raw.get('name') or "N/A"
+
+                    # Remediation text
+                    remediation = evidence.get('comment', '') or evidence.get('remediation_steps', '')
+
                     buffer.truncate(0)
                     buffer.seek(0)
                     writer.writerow([
-                        evidence.get('question__key', ''),
+                        resource,
                         evidence.get('question__title', ''),
                         evidence.get('status', ''),
                         evidence.get('question__severity', ''),
-                        evidence.get('created_at', ''),
-                        evidence.get('comment', ''),
+                        remediation
                     ])
                     yield buffer.getvalue()
             
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f'audit_{audit_id}_{timestamp}.csv'
+            filename = f'Audit_Report_{audit_id}.csv'
             
             response = StreamingHttpResponse(
                 stream_generator(),
@@ -361,11 +130,149 @@ class AuditExportCSVView(APIView):
             return response
         
         except Exception as e:
-            logger.error(f"Export failed: {e}")
+            logger.error(f"CSV Export failed: {e}")
             return Response(
                 {"error": "Failed to export audit"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class AuditExportPDFView(APIView):
+    """
+    Export Audit Results as PDF.
+    Generates a professional, industry-standard audit report.
+    """
+    permission_classes = [IsAuthenticated, IsSameOrganization]
+
+    def get(self, request, audit_id):
+        try:
+            audit = get_object_or_404(Audit, id=audit_id)
+            self.check_object_permissions(request, audit)
+
+            if audit.organization.subscription_status != 'active':
+                return Response(
+                    {"error": "Upgrade to Premium to export data"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            # Prepare Data
+            from apps.audits.services.stats_service import AuditStatsService
+            stats = AuditStatsService.calculate_audit_stats(audit)
+            
+            # Create PDF Buffer
+            buffer = io.BytesIO()
+            doc = SimpleDocTemplate(
+                buffer,
+                pagesize=letter,
+                rightMargin=40, leftMargin=40,
+                topMargin=40, bottomMargin=40
+            )
+
+            # Styles
+            styles = getSampleStyleSheet()
+            title_style = styles['Heading1']
+            title_style.alignment = TA_CENTER
+            
+            normal_center = ParagraphStyle('NormalCenter', parent=styles['Normal'], alignment=TA_CENTER)
+            
+            elements = []
+
+            # --- HEADER ---
+            elements.append(Paragraph("AuditEase Security Report", title_style))
+            elements.append(Spacer(1, 10))
+            elements.append(Paragraph(f"Audit ID: {audit.id}", normal_center))
+            elements.append(Paragraph(f"Date: {audit.created_at.strftime('%Y-%m-%d')}", normal_center))
+            elements.append(Paragraph(f"Organization: {audit.organization.name}", normal_center))
+            elements.append(Spacer(1, 20))
+
+            # --- EXECUTIVE SUMMARY ---
+            elements.append(Paragraph("Executive Summary", styles['Heading2']))
+            elements.append(Spacer(1, 10))
+
+            summary_data = [
+                ['Metric', 'Value'],
+                ['Total Checks', str(stats['total_findings'])],
+                ['Failures', str(stats['failed_count'])],
+                ['Passed', str(stats['passed_count'])],
+                ['Compliance Score', f"{stats['pass_rate_percentage']:.1f}%"]
+            ]
+
+            summary_table = Table(summary_data, colWidths=[200, 100])
+            summary_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (1, 0), colors.HexColor('#003366')),
+                ('TEXTCOLOR', (0, 0), (1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ]))
+            elements.append(summary_table)
+            elements.append(Spacer(1, 25))
+
+            # --- DETAILED FINDINGS ---
+            elements.append(Paragraph("Detailed Findings (Failures Only)", styles['Heading2']))
+            elements.append(Spacer(1, 10))
+
+            # Filter for Failures only
+            evidence_failures = Evidence.objects.filter(audit=audit, status='FAIL').select_related('question')
+
+            if not evidence_failures.exists():
+                elements.append(Paragraph("Great job! No failures were detected in this audit.", styles['Normal']))
+            else:
+                findings_data = [['Severity', 'Control', 'Resource', 'Remediation']]
+                
+                for ev in evidence_failures:
+                    # Severity
+                    sev_text = ev.question.severity
+                    
+                    # Resource extraction
+                    raw = ev.raw_data
+                    resource = "N/A"
+                    if isinstance(raw, dict):
+                        resource = raw.get('repo_name') or raw.get('org_name') or "N/A"
+                    
+                    # Remediation (Truncated if too long for table)
+                    comment = ev.comment or "No details"
+                    remediation = Paragraph(comment[:400] + "..." if len(comment)>400 else comment, styles['Normal'])
+                    
+                    findings_data.append([sev_text, ev.question.key, resource, remediation])
+
+                # Create Table
+                # Adjust column widths to fit page
+                t = Table(findings_data, colWidths=[50, 80, 120, 280])
+                t.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#CCCCCC')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 8),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ]))
+                
+                elements.append(t)
+
+            # --- FOOTER ---
+            elements.append(Spacer(1, 40))
+            elements.append(Paragraph("Generated by AuditEase - Confidential", normal_center))
+
+            # Build PDF
+            doc.build(elements)
+            
+            buffer.seek(0)
+            return FileResponse(
+                buffer, 
+                as_attachment=True, 
+                filename=f'Audit_Report_{audit_id}.pdf',
+                content_type='application/pdf'
+            )
+            
+        except Audit.DoesNotExist:
+             return Response({"error": "Audit not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"PDF Export Error: {e}")
+            return Response({"error": "Failed to generate PDF"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ExportAuditReportView(APIView):
@@ -373,18 +280,12 @@ class ExportAuditReportView(APIView):
     Generate a detailed Excel report for an audit.
     Includes Executive Summary and Detailed Findings.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsSameOrganization]
 
     def get(self, request, audit_id):
         try:
             audit = get_object_or_404(Audit, id=audit_id)
-            
-            # Explicit Permission Checks (ignoring headers)
-            if not audit.organization.members.filter(user=request.user).exists():
-                return Response(
-                    {"error": "You don't have access to this audit"},
-                    status=status.HTTP_403_FORBIDDEN
-                )
+            self.check_object_permissions(request, audit)
             
             if audit.organization.subscription_status != 'active':
                 return Response(
@@ -392,14 +293,12 @@ class ExportAuditReportView(APIView):
                     status=status.HTTP_403_FORBIDDEN
                 )
 
-            # self.check_object_permissions(request, audit) # No longer needed as we checked manually
-            
-            # --- Data Aggregation ---
-            # --- Data Aggregation ---
+            # Dependency Check
             from apps.audits.services.stats_service import AuditStatsService
+
+            # --- Data Aggregation ---
             stats = AuditStatsService.calculate_audit_stats(audit)
             
-            # Use stats from service to ensure parity with Dashboard
             total_checks = stats['total_findings']
             passed_checks = stats['passed_count']
             failed_checks = stats['failed_count']
@@ -439,27 +338,24 @@ class ExportAuditReportView(APIView):
             for cell in ws_summary['3']:
                 cell.font = Font(bold=True)
             
-            # 3D Pie Chart: Pass vs Fail
+            # Chart: Compliance Status
             pie = PieChart()
             pie.title = "Compliance Status"
-            # Data: Passed, Failed. (Rows 5 and 6)
             data = Reference(ws_summary, min_col=2, min_row=5, max_row=6) 
             labels = Reference(ws_summary, min_col=1, min_row=5, max_row=6)
             pie.add_data(data, titles_from_data=False)
             pie.set_categories(labels)
             
-            # Make it 3D (OpenPyXL PieChart usually supports 3D via specific class or settings, 
-            # strictly speaking 'PieChart3D' exists but user asked for 'PieChart' from openpyxl.chart generally.
-            # Let's check if PieChart3D is available or if we just use PieChart. 
-            # The user request said "Chart: Insert a 3D Pie Chart". 
-            # openpyxl.chart.PieChart3D is the class.)
-            from openpyxl.chart import PieChart3D
-            pie_3d = PieChart3D()
-            pie_3d.title = "Compliance Status"
-            pie_3d.add_data(data, titles_from_data=False)
-            pie_3d.set_categories(labels)
-            
-            ws_summary.add_chart(pie_3d, "D3")
+            # Try 3D if imported
+            try:
+                from openpyxl.chart import PieChart3D
+                pie_3d = PieChart3D()
+                pie_3d.title = "Compliance Status"
+                pie_3d.add_data(data, titles_from_data=False)
+                pie_3d.set_categories(labels)
+                ws_summary.add_chart(pie_3d, "D3")
+            except:
+                ws_summary.add_chart(pie, "D3")
 
 
             # 2. Sheet 2: Detailed Findings
@@ -470,7 +366,7 @@ class ExportAuditReportView(APIView):
             
             # Styling constants
             red_font = Font(color="FF0000")
-            green_font = Font(color="008000") # Dark Green
+            green_font = Font(color="008000")
             header_font = Font(bold=True)
             
             # Headers Styling
@@ -480,35 +376,20 @@ class ExportAuditReportView(APIView):
             # Freeze Top Row
             ws_details.freeze_panes = "A2"
             
-            # Auto-Filter
-            ws_details.auto_filter.ref = ws_details.dimensions
-            
             # Data Rows
             for evidence in evidence_qs:
-                # Assuming 'Repository' comes from somewhere? 
-                # The prompt mentions "Repository" as a header but Evidence model links to Question.
-                # Question has 'key' (resource ID-like) and 'title'.
-                # The user context "The Audit model has many AuditResult children" (we found Evidence)
-                # Maybe 'key' serves as Repository/Resource or simply 'N/A' if not available.
-                # I'll use question.key for Repository for now as a placeholder/best-guess.
-                
                 repo_name = evidence.question.key 
                 rule_name = evidence.question.title
                 status_val = evidence.status
                 severity = evidence.question.severity
-                compliance_tag = "SOC2"  # Hardcoded or derived? Prompt example says "e.g., SOC2". 
-                # Using a placeholder or derived if possible. Evidence doesn't have tags field visible.
-                # I'll modify to just string "SOC2" or similar if not dynamic.
-                remediation = evidence.comment # Using comment as remediation/details
+                compliance_tag = "SOC2"
+                remediation = evidence.comment
                 
                 row_data = [repo_name, rule_name, status_val, severity, compliance_tag, remediation]
                 ws_details.append(row_data)
                 
-                # Conditional Formatting (Row Level - applied to last appended row)
+                # Conditional Formatting
                 last_row_idx = ws_details.max_row
-                # Apply style to Status column (Col 3 / C) or whole row? 
-                # "Failed rows should have red text. Passed rows should be green." - implies whole row text color.
-                
                 row_font = None
                 if status_val == 'FAIL':
                     row_font = red_font
@@ -516,7 +397,7 @@ class ExportAuditReportView(APIView):
                     row_font = green_font
                 
                 if row_font:
-                    for col in range(1, 7): # A to F
+                    for col in range(1, 7):
                         cell = ws_details.cell(row=last_row_idx, column=col)
                         cell.font = row_font
 
@@ -533,6 +414,5 @@ class ExportAuditReportView(APIView):
         except Audit.DoesNotExist:
              return Response({"error": "Audit not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            logger.error(f"Error exporting xlsx for audit {audit_id}: {str(e)}")
+            logger.error(f"XLSX Export Error: {e}")
             return Response({"error": "Internal Server Error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-

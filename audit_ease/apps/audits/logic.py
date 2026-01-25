@@ -22,7 +22,9 @@ from .rules.cis_benchmark import (
     SecretScanningEnabled, DependabotEnabled, PrivateRepoVisibility,
     EnforceSignedCommits, BranchProtectionMain, RequireCodeReviews, 
     DismissStaleReviews, RequireLinearHistory,
-    CodeOwnersExist
+    CodeOwnersExist,
+    NoOutsideCollaborators, PreventForcePushes, PreventBranchDeletion,
+    RequireStatusChecks, LicenseFileExists
 )
 from .rules.access_control import AccessControlRule
 
@@ -35,14 +37,14 @@ COMPLIANCE_CHECK_MAP = {
     'github_branch_protection': 'check_github_branch_protection',
     'github_secret_scanning': 'check_github_secret_scanning',
     'github_org_members': 'check_github_org_members',
-    's3_public_access': 'check_aws_s3_buckets',
-    'aws_root_mfa': 'check_aws_iam_root',
-    'cloudtrail_enabled': 'check_aws_cloudtrail',
-    'db_encryption': 'check_aws_db_encryption',
-    'unused_iam_users': 'check_aws_unused_iam_users',
-    'security_groups_22': 'check_aws_security_groups',
-    'https_enforced': 'check_https_enforced',
-    'admin_mfa': 'check_admin_mfa',
+    # 's3_public_access': 'check_aws_s3_buckets',
+    # 'aws_root_mfa': 'check_aws_iam_root',
+    # 'cloudtrail_enabled': 'check_aws_cloudtrail',
+    # 'db_encryption': 'check_aws_db_encryption',
+    # 'unused_iam_users': 'check_aws_unused_iam_users',
+    # 'security_groups_22': 'check_aws_security_groups',
+    # 'https_enforced': 'check_https_enforced',
+    # 'admin_mfa': 'check_admin_mfa',
     # CIS Benchmark Mappings
     'cis_1_1_mfa': 'check_cis_1_1_mfa',
     'cis_1_2_stale_admins': 'check_cis_1_2_stale_admins',
@@ -57,6 +59,13 @@ COMPLIANCE_CHECK_MAP = {
     'cis_4_5_linear_history': 'check_cis_4_5_linear_history',
     'cis_5_1_codeowners': 'check_cis_5_1_codeowners',
     'access_control': 'check_access_control',
+    # New Advanced Rules
+    'cis_1_4_collaborators': 'check_cis_1_4_collaborators',
+    'cis_4_4_force_pushes': 'check_cis_4_4_force_pushes',
+    'cis_4_5_branch_deletion': 'check_cis_4_5_branch_deletion',
+    'cis_4_6_status_checks': 'check_cis_4_6_status_checks',
+    'gh_gov_license': 'check_gh_gov_license',
+    'readme_exists': 'check_readme_exists',
 }
 
 class AuditExecutor:
@@ -184,7 +193,7 @@ class AuditExecutor:
             integration = service.integration
             
             # Get org identifier from integration metadata
-            org_name = integration.identifier  # Typically the GitHub org name
+            org_name = integration.external_id  # Typically the GitHub org name
             
             result = service.check_org_two_factor_enforced(org_name)
             
@@ -211,7 +220,7 @@ class AuditExecutor:
             
             # Get repo identifier from integration metadata
             # Format: "owner/repo"
-            repo_full_name = integration.meta_data.get('repo_name')
+            repo_full_name = integration.config.get('repo_name')
             if not repo_full_name:
                 return (
                     'FAIL',
@@ -242,7 +251,7 @@ class AuditExecutor:
             service = self._get_github_service()
             integration = service.integration
             
-            repo_full_name = integration.meta_data.get('repo_name')
+            repo_full_name = integration.config.get('repo_name')
             if not repo_full_name:
                 return (
                     'FAIL',
@@ -324,124 +333,197 @@ class AuditExecutor:
             logger.exception(f"Unexpected error in {error_context}: {e}")
             return ('ERROR', {'error': str(e)}, f"{error_context} error: {str(e)}")
 
-    def check_cis_1_1_mfa(self) -> tuple:
+    # CIS Rules Implementation (PyGithub Compatibility)
+
+    def _get_pygithub_client(self):
+        """Helper to get PyGithub client using stored token."""
         service = self._get_github_service()
-        return self._run_rule(
-            EnforceMFA,
-            lambda: service.get_org_details(service.integration.identifier),
-            "CIS 1.1 MFA Check"
-        )
+        from github import Github
+        return Github(service.integration.access_token)
+
+    def _get_pygithub_repo(self, client):
+        """Helper to get PyGithub Repo object."""
+        service = self._get_github_service()
+        repo_name = service.integration.config.get('repo_name')
+        if not repo_name: 
+            start_repo = service.integration.config.get('repo_full_name')
+            if start_repo: repo_name = start_repo
+            else: return None
+        
+        try:
+            return client.get_repo(repo_name)
+        except Exception as e:
+            logger.warning(f"Could not fetch repo {repo_name}: {e}")
+            return None
+
+    def _get_pygithub_org(self, client):
+        """Helper to get PyGithub Org object with robust ID resolution."""
+        service = self._get_github_service()
+        
+        # 1. Try config first (fastest)
+        org_name = service.integration.config.get('org_name')
+        if org_name:
+            try:
+                return client.get_organization(org_name)
+            except:
+                pass # Try other methods
+
+        # 2. If external_id is not numeric, assume it's the login
+        if not service.integration.external_id.isdigit():
+            try:
+                return client.get_organization(service.integration.external_id)
+            except:
+                pass
+
+        # 3. Numeric ID Resolution: Scan user's organizations
+        # This fixes the "404 Not Found" when passing ID to get_organization
+        try:
+            target_id = int(service.integration.external_id)
+            for org in client.get_user().get_orgs():
+                if org.id == target_id:
+                    # Found it! Save for future use to boost performance
+                    service.integration.config['org_name'] = org.login
+                    service.integration.save()
+                    return org
+        except Exception as e:
+            logger.warning(f"Failed to resolve numeric Org ID {service.integration.external_id}: {e}")
+
+        logger.error(f"Could not resolve Org Login for ID {service.integration.external_id}")
+        return None
+
+    def check_cis_1_1_mfa(self) -> tuple:
+        client = self._get_pygithub_client()
+        org = self._get_pygithub_org(client)
+        if not org: return 'FAIL', {'error': 'Org not found'}, "Could not resolve Organization"
+        return self._run_rule(EnforceMFA, lambda: org, "CIS 1.1 Enforce MFA")
 
     def check_cis_1_2_stale_admins(self) -> tuple:
-        service = self._get_github_service()
-        return self._run_rule(
-            StaleAdminAccess,
-            lambda: service.get_org_members(service.integration.identifier),
-            "CIS 1.2 Stale Admin Check"
-        )
+        client = self._get_pygithub_client()
+        org = self._get_pygithub_org(client)
+        if not org: return 'FAIL', {'error': 'Org not found'}, "Could not resolve Organization"
+        return self._run_rule(StaleAdminAccess, lambda: org, "CIS 1.2 Stale Admin Acess")
 
     def check_cis_1_3_excessive_owners(self) -> tuple:
-        service = self._get_github_service()
-        return self._run_rule(
-            ExcessiveOwners,
-            lambda: service.get_org_members(service.integration.identifier),
-            "CIS 1.3 Excessive Owners Check"
-        )
+        client = self._get_pygithub_client()
+        org = self._get_pygithub_org(client)
+        if not org: return 'FAIL', {'error': 'Org not found'}, "Could not resolve Organization"
+        return self._run_rule(ExcessiveOwners, lambda: org, "CIS 1.3 Excessive Owners")
 
     def check_cis_2_1_secret_scanning(self) -> tuple:
-        service = self._get_github_service()
-        repo = service.integration.meta_data.get('repo_name')
-        return self._run_rule(
-            SecretScanningEnabled,
-            lambda: service.get_repo_details(repo) if repo else {},
-            "CIS 2.1 Secret Scanning Check"
-        )
+        client = self._get_pygithub_client()
+        repo = self._get_pygithub_repo(client)
+        if not repo: return 'FAIL', {'error': 'Repo not found'}, "Could not resolve Repository"
+        return self._run_rule(SecretScanningEnabled, lambda: repo, "CIS 2.1 Secret Scanning")
 
     def check_cis_2_2_dependabot(self) -> tuple:
-        service = self._get_github_service()
-        repo = service.integration.meta_data.get('repo_name')
-        return self._run_rule(
-            DependabotEnabled,
-            lambda: service.get_repo_details(repo) if repo else {},
-            "CIS 2.2 Dependabot Check"
-        )
+        client = self._get_pygithub_client()
+        repo = self._get_pygithub_repo(client)
+        if not repo: return 'FAIL', {'error': 'Repo not found'}, "Could not resolve Repository"
+        return self._run_rule(DependabotEnabled, lambda: repo, "CIS 2.2 Dependabot Enabled")
 
     def check_cis_2_5_private_repo(self) -> tuple:
-        service = self._get_github_service()
-        repo = service.integration.meta_data.get('repo_name')
-        return self._run_rule(
-            PrivateRepoVisibility,
-            lambda: service.get_repo_details(repo) if repo else {},
-            "CIS 2.5 Private Repo Check"
-        )
+        client = self._get_pygithub_client()
+        repo = self._get_pygithub_repo(client)
+        if not repo: return 'FAIL', {'error': 'Repo not found'}, "Could not resolve Repository"
+        return self._run_rule(PrivateRepoVisibility, lambda: repo, "CIS 2.5 Private Repo Visibility")
 
     def check_cis_3_1_signed_commits(self) -> tuple:
-        service = self._get_github_service()
-        repo = service.integration.meta_data.get('repo_name')
-        # Note: get_branch_protection returns dict or None (if 404/not protected)
-        return self._run_rule(
-            EnforceSignedCommits,
-            lambda: service.get_branch_protection(repo, 'main') if repo else None,
-            "CIS 3.1 Signed Commits Check"
-        )
+        client = self._get_pygithub_client()
+        repo = self._get_pygithub_repo(client)
+        if not repo: return 'FAIL', {'error': 'Repo not found'}, "Could not resolve Repository"
+        return self._run_rule(EnforceSignedCommits, lambda: repo, "CIS 3.1 Signed Commits")
 
     def check_cis_4_1_branch_protection(self) -> tuple:
-        service = self._get_github_service()
-        repo = service.integration.meta_data.get('repo_name')
-        return self._run_rule(
-            BranchProtectionMain,
-            lambda: service.get_branch_protection(repo, 'main') if repo else None,
-            "CIS 4.1 Branch Protection Check"
-        )
+        client = self._get_pygithub_client()
+        repo = self._get_pygithub_repo(client)
+        if not repo: return 'FAIL', {'error': 'Repo not found'}, "Could not resolve Repository"
+        return self._run_rule(BranchProtectionMain, lambda: repo, "CIS 4.1 Branch Protection")
 
     def check_cis_4_2_code_reviews(self) -> tuple:
-        service = self._get_github_service()
-        repo = service.integration.meta_data.get('repo_name')
-        return self._run_rule(
-            RequireCodeReviews,
-            lambda: service.get_branch_protection(repo, 'main') if repo else None,
-            "CIS 4.2 Code Reviews Check"
-        )
+        client = self._get_pygithub_client()
+        repo = self._get_pygithub_repo(client)
+        if not repo: return 'FAIL', {'error': 'Repo not found'}, "Could not resolve Repository"
+        return self._run_rule(RequireCodeReviews, lambda: repo, "CIS 4.2 Code Reviews")
 
     def check_cis_4_3_dismiss_stale(self) -> tuple:
-        service = self._get_github_service()
-        repo = service.integration.meta_data.get('repo_name')
-        return self._run_rule(
-            DismissStaleReviews,
-            lambda: service.get_branch_protection(repo, 'main') if repo else None,
-            "CIS 4.3 Dismiss Stale Check"
-        )
+        client = self._get_pygithub_client()
+        repo = self._get_pygithub_repo(client)
+        if not repo: return 'FAIL', {'error': 'Repo not found'}, "Could not resolve Repository"
+        return self._run_rule(DismissStaleReviews, lambda: repo, "CIS 4.3 Dismiss Stale Reviews")
 
     def check_cis_4_5_linear_history(self) -> tuple:
-        service = self._get_github_service()
-        repo = service.integration.meta_data.get('repo_name')
-        return self._run_rule(
-            RequireLinearHistory,
-            lambda: service.get_branch_protection(repo, 'main') if repo else None,
-            "CIS 4.5 Linear History Check"
-        )
+        client = self._get_pygithub_client()
+        repo = self._get_pygithub_repo(client)
+        if not repo: return 'FAIL', {'error': 'Repo not found'}, "Could not resolve Repository"
+        return self._run_rule(RequireLinearHistory, lambda: repo, "CIS 4.5 Linear History")
 
     def check_cis_5_1_codeowners(self) -> tuple:
-        service = self._get_github_service()
-        repo = service.integration.meta_data.get('repo_name')
-        # Use get_repo_tree to scan for files
-        return self._run_rule(
-            CodeOwnersExist,
-            lambda: service.get_repo_tree(repo, 'main', recursive=True) if repo else [],
-            "CIS 5.1 CODEOWNERS Check"
-        )
+        client = self._get_pygithub_client()
+        repo = self._get_pygithub_repo(client)
+        if not repo: return 'FAIL', {'error': 'Repo not found'}, "Could not resolve Repository"
+        return self._run_rule(CodeOwnersExist, lambda: repo, "CIS 5.1 CODEOWNERS File")
+
+    def check_cis_1_4_collaborators(self) -> tuple:
+        client = self._get_pygithub_client()
+        repo = self._get_pygithub_repo(client)
+        if not repo: return 'FAIL', {'error': 'Repo not found'}, "Could not resolve Repository"
+        return self._run_rule(NoOutsideCollaborators, lambda: repo, "CIS 1.4 Outside Collaborators")
+
+    def check_cis_4_4_force_pushes(self) -> tuple:
+        client = self._get_pygithub_client()
+        repo = self._get_pygithub_repo(client)
+        if not repo: return 'FAIL', {'error': 'Repo not found'}, "Could not resolve Repository"
+        return self._run_rule(PreventForcePushes, lambda: repo, "CIS 4.4 Force Pushes")
+
+    def check_cis_4_5_branch_deletion(self) -> tuple:
+        client = self._get_pygithub_client()
+        repo = self._get_pygithub_repo(client)
+        if not repo: return 'FAIL', {'error': 'Repo not found'}, "Could not resolve Repository"
+        return self._run_rule(PreventBranchDeletion, lambda: repo, "CIS 4.5 Branch Deletion")
+
+    def check_cis_4_6_status_checks(self) -> tuple:
+        client = self._get_pygithub_client()
+        repo = self._get_pygithub_repo(client)
+        if not repo: return 'FAIL', {'error': 'Repo not found'}, "Could not resolve Repository"
+        return self._run_rule(RequireStatusChecks, lambda: repo, "CIS 4.6 Status Checks")
+
+    def check_gh_gov_license(self) -> tuple:
+        client = self._get_pygithub_client()
+        repo = self._get_pygithub_repo(client)
+        if not repo: return 'FAIL', {'error': 'Repo not found'}, "Could not resolve Repository"
+        return self._run_rule(LicenseFileExists, lambda: repo, "GH-GOV-01 License File")
+
+    def check_readme_exists(self) -> tuple:
+        """
+        Check if the repository has a README file.
+        BEST PRACTICE: Essential for documentation.
+        """
+        client = self._get_pygithub_client()
+        repo = self._get_pygithub_repo(client)
+        if not repo: return 'FAIL', {'error': 'Repo not found'}, "Could not resolve Repository"
+        
+        try:
+            readme = repo.get_readme()
+            return (
+                'PASS', 
+                {'name': readme.name, 'html_url': readme.html_url}, 
+                f"README found: {readme.name}"
+            )
+        except Exception:
+             return (
+                 'FAIL', 
+                 {}, 
+                 "No README found in default branch."
+             )
 
     def check_access_control(self) -> tuple:
         """
         Check access control and collaborators.
         """
-        service = self._get_github_service()
-        repo = service.integration.meta_data.get('repo_name')
-        return self._run_rule(
-            AccessControlRule,
-            lambda: (service, repo) if repo else None,
-            "Access Control Check"
-        )
+        client = self._get_pygithub_client()
+        repo = self._get_pygithub_repo(client)
+        if not repo: return 'FAIL', {'error': 'Repo not found'}, "Could not resolve Repository"
+        return self._run_rule(AccessControlRule, lambda: repo, "Access Control Check")
 
     # AWS COMPLIANCE CHECK IMPLEMENTATIONS
 
@@ -470,7 +552,7 @@ class AuditExecutor:
                 raise AwsServiceError("AWS credentials not properly configured")
             
             # Get region from metadata, default to us-east-1
-            region = integration.meta_data.get('region', 'us-east-1')
+            region = integration.config.get('region', 'us-east-1')
             
             return AwsService(access_key, secret_key, region)
         
