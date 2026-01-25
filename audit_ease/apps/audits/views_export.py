@@ -21,6 +21,7 @@ from rest_framework.views import APIView
 
 from apps.audits.models import Audit, Evidence
 from apps.organizations.permissions import IsSameOrganization, HasActiveSubscription
+from apps.core.permissions import HasProPlan
 
 # ReportLab Imports
 try:
@@ -47,7 +48,7 @@ class AuditExportCSVView(APIView):
     
     Optimized for large datasets using proper CSV streaming.
     """
-    permission_classes = [IsAuthenticated, IsSameOrganization]
+    permission_classes = [IsAuthenticated, IsSameOrganization, HasProPlan]
 
     def get(self, request, audit_id):
         try:
@@ -55,12 +56,8 @@ class AuditExportCSVView(APIView):
             audit = get_object_or_404(Audit, id=audit_id)
             self.check_object_permissions(request, audit)
             
-            # 2. Subscription Check
-            if audit.organization.subscription_status != 'active':
-                return Response(
-                    {"error": "Upgrade to Premium to export data"},
-                    status=status.HTTP_403_FORBIDDEN
-                )
+            # 2. Subscription Check (Managed by HasProPlan)
+            # Removed manual check
             
             # 3. Fetch Evidence
             evidence_list = Evidence.objects.filter(audit=audit).select_related(
@@ -142,20 +139,14 @@ class AuditExportPDFView(APIView):
     Export Audit Results as PDF.
     Generates a professional, industry-standard audit report.
     """
-    permission_classes = [IsAuthenticated, IsSameOrganization]
+    permission_classes = [IsAuthenticated, IsSameOrganization, HasProPlan]
 
     def get(self, request, audit_id):
         try:
             audit = get_object_or_404(Audit, id=audit_id)
             self.check_object_permissions(request, audit)
 
-            if audit.organization.subscription_status != 'active':
-                return Response(
-                    {"error": "Upgrade to Premium to export data"},
-                    status=status.HTTP_403_FORBIDDEN
-                )
-
-            # Prepare Data
+            # Prepared Data
             from apps.audits.services.stats_service import AuditStatsService
             stats = AuditStatsService.calculate_audit_stats(audit)
             
@@ -280,18 +271,15 @@ class ExportAuditReportView(APIView):
     Generate a detailed Excel report for an audit.
     Includes Executive Summary and Detailed Findings.
     """
-    permission_classes = [IsAuthenticated, IsSameOrganization]
+    permission_classes = [IsAuthenticated, IsSameOrganization, HasProPlan]
 
     def get(self, request, audit_id):
         try:
             audit = get_object_or_404(Audit, id=audit_id)
             self.check_object_permissions(request, audit)
             
-            if audit.organization.subscription_status != 'active':
-                return Response(
-                    {"error": "Upgrade to Premium to export data"},
-                    status=status.HTTP_403_FORBIDDEN
-                )
+            # Subscription Check (Managed by HasProPlan)
+            # Removed manual check
 
             # Dependency Check
             from apps.audits.services.stats_service import AuditStatsService

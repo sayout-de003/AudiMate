@@ -6,6 +6,7 @@ import { AuditStatus } from '../components/AuditStatus';
 import { Play, FileText, Loader2, AlertCircle, Github } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import { cn } from '../lib/utils';
 
 export function Audits() {
     const queryClient = useQueryClient();
@@ -102,7 +103,8 @@ export function Audits() {
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">ID</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">Date</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">Status</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">Pass Rate</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">Score</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">Grade</th>
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">Actions</th>
                                 </tr>
                             </thead>
@@ -117,11 +119,33 @@ export function Audits() {
                                             <AuditStatus status={audit.status} />
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                            {audit.pass_rate !== undefined ? (
-                                                <span className={audit.pass_rate === 100 ? "text-green-600 font-medium" : audit.pass_rate < 50 ? "text-red-600 font-medium" : "text-gray-700"}>
-                                                    {audit.pass_rate}%
+                                            {(audit.status === 'RUNNING' || audit.status === 'PENDING') ? (
+                                                <div className="flex items-center text-indigo-600">
+                                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                                    <span className="text-xs font-medium">Scanning...</span>
+                                                </div>
+                                            ) : (
+                                                <span className={cn(
+                                                    "font-bold text-lg",
+                                                    audit.score >= 80 ? "text-green-600" : audit.score >= 50 ? "text-yellow-600" : "text-red-600"
+                                                )}>
+                                                    {audit.score}
                                                 </span>
-                                            ) : '-'}
+                                            )}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            {(audit.status === 'RUNNING' || audit.status === 'PENDING') ? (
+                                                <span className="text-gray-300">-</span>
+                                            ) : (
+                                                <span className={cn(
+                                                    "inline-flex items-center justify-center w-8 h-8 rounded-lg font-bold text-white shadow-sm",
+                                                    audit.grade === 'A' ? "bg-green-500" :
+                                                        audit.grade === 'B' ? "bg-blue-500" :
+                                                            audit.grade === 'C' ? "bg-yellow-500" : "bg-red-500"
+                                                )}>
+                                                    {audit.grade}
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             <Link to={`/audits/${audit.id}`} className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300 inline-flex items-center transition-colors">

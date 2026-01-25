@@ -3,7 +3,8 @@ from celery import shared_task
 from django.utils import timezone
 from github import Github
 
-from apps.audits.models import Audit, Evidence, Question
+import requests
+from apps.audits.models import Audit, Evidence, Question, SecuritySnapshot
 from apps.integrations.models import Integration
 
 logger = logging.getLogger(__name__)
@@ -491,16 +492,152 @@ def run_audit_task(self, audit_id):
             audit.completed_at = timezone.now()
             
             # Simple Scoring: Pass Rate
+            # Weighted Scoring Logic
+            # Start: 100 Points
+            # Critical: -15, High: -10, Medium: -5, Low: 0
+            
+            # 1. Fetch Counts
             total_ev = Evidence.objects.filter(audit=audit).count()
             passed_ev = Evidence.objects.filter(audit=audit, status='PASS').count()
-            score = 0
-            if total_ev > 0:
-                score = int((passed_ev / total_ev) * 100)
+            
+            score = 100
+            scan_summary = {
+                'total': total_ev,
+                'passed': passed_ev,
+                'failed_critical': 0,
+                'failed_high': 0,
+                'failed_medium': 0,
+                'failed_low': 0
+            }
+
+            failed_evidence = Evidence.objects.filter(audit=audit, status='FAIL').select_related('question')
+            
+            # Filter out Risk Accepted items (they shouldn't count against score)
+            # Actually, if status is 'FAIL' but workflow is 'RISK_ACCEPTED', we treat as pass for scoring?
+            # User said: "EXCLUDE items where status == 'RISK_ACCEPTED'". 
+            # In previous step we added 'RISK_ACCEPTED' to STATUS_CHOICES.
+            # So if we set status='RISK_ACCEPTED', they won't even appear in status='FAIL' filter above!
+            # But let's be safe and exclude workflow_status just in case logic varies.
+            
+            active_failed_evidence = []
+            for ev in failed_evidence:
+                if ev.status == 'RISK_ACCEPTED' or ev.workflow_status == 'RISK_ACCEPTED':
+                    continue
+                active_failed_evidence.append(ev)
+
+            for ev in active_failed_evidence:
+                s = ev.question.severity.upper()
+                if s == 'CRITICAL':
+                    score -= 15
+                    scan_summary['failed_critical'] += 1
+                elif s == 'HIGH':
+                    score -= 10
+                    scan_summary['failed_high'] += 1
+                elif s == 'MEDIUM':
+                    score -= 5
+                    scan_summary['failed_medium'] += 1
+                elif s == 'LOW':
+                    # Low failure = 0 points deduction (Informational)
+                    scan_summary['failed_low'] += 1
+
+            # Ensure non-negative
+            if score < 0: score = 0
+            
             audit.score = score
+            # audit.grade is intentionally left blank/legacy as per new requirements ("no ABCF")
+            audit.details = scan_summary
             audit.save()
             
             logger.info(f"Audit {audit_id} Completed. Score: {score}")
-            
+
+            # --- SNAPSHOT ---
+            SecuritySnapshot.objects.create(
+                organization=audit.organization,
+                score=score,
+                grade="", # No grade
+                critical_count=scan_summary['failed_critical']
+            )
+
+            # --- SLACK REGRESSION ALERT ---
+            try:
+                if audit.organization.slack_webhook_url and active_failed_evidence:
+                    # Find previous completed audit
+                    previous_audit = Audit.objects.filter(
+                        organization=audit.organization,
+                        status='COMPLETED'
+                    ).exclude(id=audit.id).order_by('-completed_at').first()
+                    
+                    regressions = []
+                    
+                    if previous_audit:
+                        # Get previous failures keys
+                        prev_fail_keys = set(
+                            Evidence.objects.filter(
+                                audit=previous_audit, 
+                                status='FAIL'
+                            ).exclude(
+                                workflow_status='RISK_ACCEPTED'
+                            ).values_list('question__key', flat=True)
+                        )
+                        
+                        # Identify new failures
+                        for ev in active_failed_evidence:
+                            if ev.question.key not in prev_fail_keys:
+                                regressions.append(ev)
+                    else:
+                        # First audit? Treat all as regressions or none?
+                        # Usually alerts are for NEW problems. If first audit, everything is found.
+                        # Using regression definition: "FAILED now but PASSED (or didn't exist) in previous"
+                        # If no previous, technically everything is new. 
+                        # But alerting on initial scan might be noisy. 
+                        # User request: "If a specific check ... FAILED now but PASSED (or didn't exist) in the previous audit"
+                        # If no previous audit, then "PASSED in previous" is false, "didn't exist" is true(ish).
+                        # Let's alert only if previous audit exists to avoid helping spam on onboarding.
+                        pass
+                    
+                    if regressions:
+                        # Send Slack Payload
+                        blocks = [
+                            {
+                                "type": "header",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": f"🚨 Security Regressions Detected: {audit.organization.name}"
+                                }
+                            },
+                             {
+                                "type": "section",
+                                "text": {
+                                    "type": "mrkdwn",
+                                    "text": f"Audit Score: *{score}* (Grade: {grade})\nFound *{len(regressions)}* new issues."
+                                }
+                            }
+                        ]
+                        
+                        for reg in regressions[:5]: # Limit to 5
+                            blocks.append({
+                                "type": "section",
+                                "text": {
+                                    "type": "mrkdwn",
+                                    "text": f"*FAIL: {reg.question.title}*\nSeverity: {reg.question.severity}"
+                                }
+                            })
+                            
+                        if len(regressions) > 5:
+                             blocks.append({
+                                "type": "section",
+                                "text": {
+                                    "type": "mrkdwn",
+                                    "text": f"...and {len(regressions)-5} more."
+                                }
+                            })
+
+                        payload = {"blocks": blocks}
+                        requests.post(audit.organization.slack_webhook_url, json=payload, timeout=5)
+                        
+            except Exception as e:
+                logger.error(f"Slack Alert Failed: {e}")
+
         except Exception as e:
             raise ValueError(f"GitHub Connection/Audit Failed: {e}")
 

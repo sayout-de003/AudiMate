@@ -47,7 +47,7 @@ urlpatterns = [
     path("api/v1/", include("apps.users.urls")),
     path("api/v1/", include("apps.organizations.urls")),
     path("api/v1/integrations/", include("apps.integrations.urls")),
-    path("api/v1/audits/", include("apps.audits.urls")),
+    path("api/v1/", include("apps.audits.api.urls")),
     path("api/v1/reports/", include("apps.reports.urls")),
     path("api/v1/billing/", include("apps.billing.urls")),
     path("debug-sentry/", trigger_error),

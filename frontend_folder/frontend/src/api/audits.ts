@@ -3,9 +3,16 @@ import { api } from './client';
 export interface Audit {
     id: string;
     status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+    score: number;
+    grade: string;
     created_at: string;
     completed_at?: string;
-    pass_rate?: number;
+    details?: {
+        critical_fails: number;
+        high_fails: number;
+        pass_count: number;
+        [key: string]: any;
+    };
 }
 
 export interface Question {
@@ -24,7 +31,10 @@ export interface Evidence {
     comment?: string;
     created_at: string;
     screenshot_url: string | null;
+    manual_proof: string | null;
     remediation_steps: string | null;
+    workflow_status?: 'OPEN' | 'FIXED' | 'RISK_ACCEPTED';
+    risk_acceptance_reason?: string;
 }
 
 export const auditsApi = {
@@ -86,9 +96,21 @@ export const auditsApi = {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('evidence_id', evidenceId.toString());
-        const { data } = await api.post(`/audits/evidence/${evidenceId}/upload_screenshot/`, formData, {
+        // Use generic upload endpoint if specific one doesn't exist, or specific one
+        // Assuming endpoint /api/v1/evidence/{id}/upload_proof/ or similar based on request
+        // The prompt asked for: PATCH /api/v1/evidence/{id}/ with multipart/form-data for manual_proof field
+        // So let's implement the PATCH method
+        const patchFormData = new FormData();
+        patchFormData.append('manual_proof', file);
+
+        const { data } = await api.patch(`/evidence/${evidenceId}/`, patchFormData, {
             headers: { 'Content-Type': 'multipart/form-data' }
         });
+        return data;
+    },
+
+    acceptRisk: async (evidenceId: number, reason: string) => {
+        const { data } = await api.post(`/evidence/${evidenceId}/accept_risk/`, { reason });
         return data;
     },
 

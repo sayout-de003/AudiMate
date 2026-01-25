@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { type Evidence, auditsApi } from '../api/audits';
 import { cn } from '../lib/utils';
-import { Camera, Code, AlertTriangle, CheckCircle, Info, Upload, RefreshCw } from 'lucide-react';
+import { Camera, Code, AlertTriangle, CheckCircle, Info, Upload, RefreshCw, ShieldAlert, FileText } from 'lucide-react';
+import { RiskAcceptanceModal } from './RiskAcceptanceModal';
+import { Button } from './ui/Button';
 
 interface EvidenceRowProps {
     evidence: Evidence;
@@ -12,28 +14,48 @@ export function EvidenceRow({ evidence: initialEvidence }: EvidenceRowProps) {
     const [expanded, setExpanded] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
 
+    // Risk Acceptance State
+    const [isRiskModalOpen, setIsRiskModalOpen] = useState(false);
+    const [isAcceptingRisk, setIsAcceptingRisk] = useState(false);
+
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
         setIsUploading(true);
         try {
-            const updatedEvidence = await auditsApi.uploadEvidenceScreenshot(evidence.id, file);
-            // Optimistic update or use returned data if backend returns the updated evidence object
-            // Assuming backend returns { success: true, url: ... } or the updated evidence object.
-            // Let's assume it returns the updated evidence or we force a refresh.
-            // Adjust based on API response. If API returns just success, we might fallback to object URL for immediate feedback.
+            // Using the PATCH logic for manual_proof
+            const updatedEvidence = await auditsApi.uploadEvidenceScreenshot(evidence.id, file); // note: name kept same but logic updated in api file
+
             setEvidence((prev: Evidence) => ({
                 ...prev,
-                screenshot_url: updatedEvidence.screenshot_url || URL.createObjectURL(file)
+                manual_proof: updatedEvidence.manual_proof || updatedEvidence.screenshot_url || URL.createObjectURL(file),
+                screenshot_url: updatedEvidence.screenshot_url || prev.screenshot_url // keep screenshot if exists
             }));
+
         } catch (error) {
             console.error("Upload failed", error);
-            alert("Failed to upload screenshot.");
+            alert("Failed to upload proof.");
         } finally {
             setIsUploading(false);
         }
     };
+
+    const handleAcceptRisk = async (reason: string) => {
+        setIsAcceptingRisk(true);
+        try {
+            const updated = await auditsApi.acceptRisk(evidence.id, reason);
+            setEvidence(updated); // Should return updated evidence with status='RISK_ACCEPTED'
+            setIsRiskModalOpen(false);
+        } catch (error) {
+            alert("Failed to accept risk");
+            console.error(error);
+        } finally {
+            setIsAcceptingRisk(false);
+        }
+    };
+
+    const status = evidence.workflow_status || evidence.status; // Prefer workflow status if available
 
     return (
         <div className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors first:border-t">
@@ -44,10 +66,12 @@ export function EvidenceRow({ evidence: initialEvidence }: EvidenceRowProps) {
             >
                 <div className="flex items-center gap-4">
                     <div className="flex-shrink-0">
-                        {evidence.status === 'FAIL' ? (
+                        {status === 'FAIL' ? (
                             <AlertTriangle className="text-red-500 w-5 h-5" />
-                        ) : evidence.status === 'PASS' ? (
+                        ) : status === 'PASS' || status === 'FIXED' ? (
                             <CheckCircle className="text-green-500 w-5 h-5" />
+                        ) : status === 'RISK_ACCEPTED' ? (
+                            <ShieldAlert className="text-amber-500 w-5 h-5" />
                         ) : (
                             <Info className="text-gray-500 w-5 h-5" />
                         )}
@@ -160,14 +184,35 @@ export function EvidenceRow({ evidence: initialEvidence }: EvidenceRowProps) {
                         </div>
                     )}
 
-                    {/* D. Comment */}
-                    {evidence.comment && (
-                        <div className="mt-4 text-sm text-gray-600 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-4">
-                            <span className="font-semibold">Note:</span> {evidence.comment}
-                        </div>
-                    )}
+                    {/* E. Action Buttons */}
+                    <div className="mt-6 flex flex-wrap gap-3 border-t border-gray-100 dark:border-gray-700 pt-4">
+                        {status !== 'RISK_ACCEPTED' && status !== 'PASS' && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-amber-600 border-amber-200 hover:bg-amber-50"
+                                onClick={() => setIsRiskModalOpen(true)}
+                            >
+                                <ShieldAlert className="w-4 h-4 mr-2" />
+                                Accept Risk
+                            </Button>
+                        )}
+
+                        {status === 'RISK_ACCEPTED' && (
+                            <div className="px-3 py-2 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded text-sm text-amber-800 dark:text-amber-200 w-full mb-2">
+                                <span className="font-bold">Risk Accepted:</span> {evidence.risk_acceptance_reason}
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
+
+            <RiskAcceptanceModal
+                isOpen={isRiskModalOpen}
+                onClose={() => setIsRiskModalOpen(false)}
+                onConfirm={handleAcceptRisk}
+                isLoading={isAcceptingRisk}
+            />
         </div>
     );
 }

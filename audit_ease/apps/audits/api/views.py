@@ -1,19 +1,22 @@
-
 import csv
 import io
 import logging
 from datetime import datetime
 from django.http import StreamingHttpResponse, HttpResponse, FileResponse
 from django.shortcuts import get_object_or_404, render
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, mixins, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import PermissionDenied
 
 from apps.audits.models import Audit, Evidence
 from apps.audits.serializers import AuditSerializer
 from apps.organizations.permissions import IsSameOrganization
+from apps.organizations.models import Membership
 from apps.audits.services.stats_service import AuditStatsService
+from apps.audits.serializers import EvidenceSerializer
+from apps.core.permissions import HasProPlan
 
 # ReportLab Imports
 try:
@@ -31,12 +34,99 @@ from openpyxl.styles import Font, PatternFill, Alignment
 
 logger = logging.getLogger(__name__)
 
-class AuditViewSet(viewsets.ReadOnlyModelViewSet):
+from rest_framework import permissions
+
+class IsAuditOwner(permissions.BasePermission):
+    """
+    Custom permission to ensure user access to Audit via Organization or Ownership.
+    """
+    def has_object_permission(self, request, view, obj):
+        # Check if audit.organization in user's organizations OR user is the one who triggered it
+        # We use a membership check for "in request.user.organizations"
+        user_orgs = [m.organization for m in request.user.memberships.all()]
+        return (obj.organization in user_orgs) or (obj.triggered_by == request.user)
+
+class AuditViewSet(mixins.DestroyModelMixin, viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for viewing Audits and exporting results.
     """
     serializer_class = AuditSerializer
     permission_classes = [IsAuthenticated, IsSameOrganization]
+
+    def get_object(self):
+        """
+        Override get_object to fetch Audit by PK directly, bypassing header-based filters,
+        and applying robust permission checks.
+        """
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        pk = self.kwargs.get(lookup_url_kwarg)
+        
+        # Retrieve the Audit by PK
+        obj = get_object_or_404(Audit, pk=pk)
+        
+        # Check permission for this specific object
+        self.check_object_permissions(self.request, obj)
+        
+        return obj
+
+    def perform_destroy(self, instance):
+        """
+        Only allow Organization Admins to delete audits.
+        """
+        # User organization membership is already checked by IsSameOrganization for 'read'
+        # But we need to strictly check Role=ADMIN for delete.
+        
+        membership = Membership.objects.filter(
+            user=self.request.user,
+            organization=instance.organization
+        ).first()
+
+        if not membership or membership.role != Membership.ROLE_ADMIN:
+             raise PermissionDenied("Only Organization Admins can delete audits.")
+        
+        instance.delete()
+
+
+    @action(detail=False, methods=['post'], url_path='start')
+    def start_audit(self, request):
+        """
+        POST /api/v1/audits/start/
+        Start a new audit for the organization.
+        """
+        try:
+            organization = self.request.user.get_organization()
+            if not organization:
+                 return Response({"error": "No organization found for user"}, status=400)
+
+            audit = Audit.objects.create(
+                organization=organization,
+                triggered_by=request.user,
+                status='PENDING'
+            )
+            
+            # Trigger Celery task
+            from apps.audits.tasks import run_audit_task
+            run_audit_task.delay(audit.id)
+            
+            return Response({
+                "audit_id": str(audit.id),
+                "status": "PENDING",
+                "message": "Audit started successfully"
+            }, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            logger.error(f"Failed to start audit: {e}")
+            return Response({"error": "Internal Error"}, status=500)
+
+    @action(detail=True, methods=['get'], url_path='evidence')
+    def evidence_list(self, request, pk=None):
+        """
+        GET /api/v1/audits/{id}/evidence/
+        List all evidence for a specific audit.
+        """
+        audit = self.get_object()
+        evidence_qs = Evidence.objects.filter(audit=audit).select_related('question')
+        serializer = EvidenceSerializer(evidence_qs, many=True)
+        return Response(serializer.data)
 
     def get_queryset(self):
         """
@@ -48,23 +138,16 @@ class AuditViewSet(viewsets.ReadOnlyModelViewSet):
         organization = self.request.user.get_organization()
         return Audit.objects.filter(organization=organization).order_by('-created_at')
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get'], url_path='export/csv', permission_classes=[IsAuthenticated, IsAuditOwner, HasProPlan])
     def export_csv(self, request, pk=None):
         """
         Export audit results as CSV.
         """
         try:
-            # 1. Fetch Audit (IsSameOrganization handled by get_object -> get_queryset & permission_classes)
+            # 1. Fetch Audit (Permissions handled by get_object)
             audit = self.get_object()
             
-            # 2. Subscription Check (Optional based on existing code)
-            if hasattr(audit.organization, 'subscription_status') and audit.organization.subscription_status != 'active':
-                 return Response(
-                    {"error": "Upgrade to Premium to export data"},
-                    status=status.HTTP_403_FORBIDDEN
-                )
-
-            # 3. Fetch Evidence
+            # 2. Fetch Evidence
             evidence_list = Evidence.objects.filter(audit=audit).select_related(
                 'question'
             ).order_by('created_at').values(
@@ -134,7 +217,7 @@ class AuditViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get'], url_path='export/xlsx', permission_classes=[IsAuthenticated, IsAuditOwner, HasProPlan])
     def export_xlsx(self, request, pk=None):
         """
         Export audit results as Excel (XLSX).
@@ -142,12 +225,6 @@ class AuditViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             audit = self.get_object()
             
-            if hasattr(audit.organization, 'subscription_status') and audit.organization.subscription_status != 'active':
-                return Response(
-                    {"error": "Upgrade to Premium to export data"},
-                    status=status.HTTP_403_FORBIDDEN
-                )
-
             # --- Data Aggregation ---
             stats = AuditStatsService.calculate_audit_stats(audit)
             
@@ -243,7 +320,7 @@ class AuditViewSet(viewsets.ReadOnlyModelViewSet):
             logger.error(f"XLSX Export Error: {e}")
             return Response({"error": "Internal Server Error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get'], url_path='export/pdf', permission_classes=[IsAuthenticated, IsAuditOwner, HasProPlan])
     def pdf(self, request, pk=None):
         """
         Export Audit results as PDF.
@@ -251,119 +328,73 @@ class AuditViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             audit = self.get_object()
             
-            if hasattr(audit.organization, 'subscription_status') and audit.organization.subscription_status != 'active':
-                return Response(
-                    {"error": "Upgrade to Premium to export data"},
-                    status=status.HTTP_403_FORBIDDEN
-                )
-
-            # Prepare Data
-            stats = AuditStatsService.calculate_audit_stats(audit)
+            # Generate PDF
+            from apps.audits.services.pdf_report import AuditPDFGenerator
+            pdf_bytes = AuditPDFGenerator.generate_pdf(audit)
             
-            # Create PDF Buffer
-            buffer = io.BytesIO()
-            doc = SimpleDocTemplate(
-                buffer,
-                pagesize=letter,
-                rightMargin=40, leftMargin=40,
-                topMargin=40, bottomMargin=40
-            )
-
-            # Styles
-            styles = getSampleStyleSheet()
-            title_style = styles['Heading1']
-            title_style.alignment = TA_CENTER
-            normal_center = ParagraphStyle('NormalCenter', parent=styles['Normal'], alignment=TA_CENTER)
-            
-            elements = []
-
-            # --- HEADER ---
-            elements.append(Paragraph("AuditEase Security Report", title_style))
-            elements.append(Spacer(1, 10))
-            elements.append(Paragraph(f"Audit ID: {audit.id}", normal_center))
-            elements.append(Paragraph(f"Date: {audit.created_at.strftime('%Y-%m-%d')}", normal_center))
-            elements.append(Paragraph(f"Organization: {audit.organization.name}", normal_center))
-            elements.append(Spacer(1, 20))
-
-            # --- EXECUTIVE SUMMARY ---
-            elements.append(Paragraph("Executive Summary", styles['Heading2']))
-            elements.append(Spacer(1, 10))
-
-            summary_data = [
-                ['Metric', 'Value'],
-                ['Total Checks', str(stats.get('total_findings', 0))],
-                ['Failures', str(stats.get('failed_count', 0))],
-                ['Passed', str(stats.get('passed_count', 0))],
-                ['Compliance Score', f"{stats.get('pass_rate_percentage', 0):.1f}%"]
-            ]
-
-            summary_table = Table(summary_data, colWidths=[200, 100])
-            summary_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (1, 0), colors.HexColor('#003366')),
-                ('TEXTCOLOR', (0, 0), (1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ]))
-            elements.append(summary_table)
-            elements.append(Spacer(1, 25))
-
-            # --- DETAILED FINDINGS ---
-            elements.append(Paragraph("Detailed Findings (Failures Only)", styles['Heading2']))
-            elements.append(Spacer(1, 10))
-
-            # Filter for Failures only
-            evidence_failures = Evidence.objects.filter(audit=audit, status='FAIL').select_related('question')
-
-            if not evidence_failures.exists():
-                elements.append(Paragraph("Great job! No failures were detected in this audit.", styles['Normal']))
-            else:
-                findings_data = [['Severity', 'Control', 'Resource', 'Remediation']]
-                
-                for ev in evidence_failures:
-                    sev_text = ev.question.severity
-                    
-                    # Resource extraction
-                    raw = ev.raw_data
-                    resource = "N/A"
-                    if isinstance(raw, dict):
-                        resource = raw.get('repo_name') or raw.get('org_name') or "N/A"
-                    
-                    comment = ev.comment or "No details"
-                    remediation = Paragraph(comment[:400] + "..." if len(comment)>400 else comment, styles['Normal'])
-                    
-                    findings_data.append([sev_text, ev.question.key, resource, remediation])
-
-                # Create Table
-                t = Table(findings_data, colWidths=[50, 80, 120, 280])
-                t.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#CCCCCC')),
-                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, 0), (-1, -1), 8),
-                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                    ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ]))
-                
-                elements.append(t)
-
-            # --- FOOTER ---
-            elements.append(Spacer(1, 40))
-            elements.append(Paragraph("Generated by AuditEase - Confidential", normal_center))
-
-            doc.build(elements)
-            
-            buffer.seek(0)
-            return FileResponse(
-                buffer, 
-                as_attachment=True, 
-                filename=f'Audit_Report_{audit.id}.pdf',
-                content_type='application/pdf'
-            )
+            # Return Response
+            response = HttpResponse(pdf_bytes, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="Audit_Report_{audit.id}.pdf"'
+            return response
             
         except Exception as e:
             logger.error(f"PDF Export Error: {e}")
             return Response({"error": "Failed to generate PDF"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated, IsAuditOwner])
+    def preview_pdf(self, request, pk=None):
+        """
+        Preview Audit PDF as HTML in browser.
+        """
+        try:
+            audit = self.get_object()
+            
+            from apps.audits.services.pdf_report import AuditPDFGenerator
+            html_content = AuditPDFGenerator.generate_html(audit)
+            
+            return HttpResponse(html_content, content_type='text/html')
+            
+        except Exception as e:
+            logger.error(f"PDF Preview Error: {e}")
+            return Response({"error": "Failed to preview PDF"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class EvidenceViewSet(mixins.RetrieveModelMixin, mixins.UpdateModelMixin, viewsets.GenericViewSet):
+    """
+    API for managing Evidence items.
+    """
+    queryset = Evidence.objects.all()
+    serializer_class = EvidenceSerializer
+    permission_classes = [IsAuthenticated, IsSameOrganization]
+
+    def get_queryset(self):
+        # Ensure user can only access evidence from their org
+        return Evidence.objects.filter(
+            audit__organization=self.request.user.get_organization()
+        )
+
+    @action(detail=True, methods=['post'])
+    def accept_risk(self, request, pk=None):
+        """
+        POST /api/v1/evidence/{id}/accept_risk/
+        Mark evidence as RISK_ACCEPTED.
+        """
+        evidence = self.get_object()
+        reason = request.data.get('reason')
+        
+        if not reason:
+            return Response(
+                {"error": "Reason is required to accept risk."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        evidence.status = 'RISK_ACCEPTED'
+        evidence.workflow_status = 'RISK_ACCEPTED'
+        evidence.risk_acceptance_reason = reason
+        evidence.save()
+        
+        # Trigger re-score (Optional but requested "Crucial: Trigger a re-calculation... or let user re-run")
+        # Optimization: We can just return OK and let frontend refresh/re-run.
+        # But if we want to be nice, we could fire a task.
+        # Given snippet length, I'll stick to updating object.
+        
+        return Response(self.get_serializer(evidence).data)

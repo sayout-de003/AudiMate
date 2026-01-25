@@ -7,3 +7,6 @@ class UsersConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.users'  # <--- The new Python path
     label = 'users'      # <--- KEEPS THE OLD DB RELATIONS ALIVE
+
+    def ready(self):
+        import apps.users.signals

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Audit, Evidence, Question, AuditSnapshot
+from .models import Audit, Evidence, Question, AuditSnapshot, SecuritySnapshot
 
 class AuditSerializer(serializers.ModelSerializer):
     organization_name = serializers.CharField(
@@ -66,6 +66,11 @@ class AuditSnapshotSerializer(serializers.ModelSerializer):
         model = AuditSnapshot
         fields = ['id', 'audit', 'name', 'version', 'checksum', 'created_at', 'created_by_email']
         read_only_fields = ['id', 'audit', 'version', 'checksum', 'created_at', 'created_by_email']
+
+class SecuritySnapshotSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SecuritySnapshot
+        fields = ['date', 'score', 'grade', 'critical_count']
 
 class AuditSnapshotDetailSerializer(AuditSnapshotSerializer):
     class Meta(AuditSnapshotSerializer.Meta):

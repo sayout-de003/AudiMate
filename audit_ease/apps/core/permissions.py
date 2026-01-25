@@ -100,3 +100,25 @@ class CheckTrialQuota(permissions.BasePermission):
                 return False
                 
         return True
+
+class HasProPlan(permissions.BasePermission):
+    """
+    Allow access only if Organization is on PRO plan.
+    Bypassed by Superusers.
+    """
+    def has_permission(self, request, view):
+        if request.user.is_superuser:
+            return True
+            
+        if not request.user.is_authenticated:
+            return False
+            
+        organization = request.user.get_organization()
+        if not organization:
+            return False
+            
+        if organization.subscription_plan == Organization.SUBSCRIPTION_PLAN_PRO:
+            return True
+            
+        # Default False (FREE plan)
+        return False

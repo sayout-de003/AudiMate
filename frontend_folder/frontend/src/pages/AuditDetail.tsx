@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { auditsApi } from '../api/audits';
@@ -8,6 +8,7 @@ import { AuditStatus } from '../components/AuditStatus';
 import { Button } from '../components/ui/Button';
 import { ArrowLeft, Download, Loader2, FileText, Upload, Camera, Lock } from 'lucide-react';
 import { cn } from '../lib/utils';
+// import { useState } from 'react'; // Removed duplicate
 
 type TabType = 'overview' | 'evidence' | 'snapshots';
 
@@ -15,12 +16,23 @@ export function AuditDetail() {
     const { id } = useParams<{ id: string }>();
     const [activeTab, setActiveTab] = useState<TabType>('overview');
     const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+    const [pollingEnabled, setPollingEnabled] = useState(false);
     const queryClient = useQueryClient();
 
     const { data: audit, isLoading: isLoadingAudit } = useQuery({
         queryKey: ['audit', id],
-        queryFn: () => auditsApi.get(id!)
+        queryFn: () => auditsApi.get(id!),
+        refetchInterval: pollingEnabled ? 5000 : false,
     });
+
+    // Enable polling if audit is running
+    useEffect(() => {
+        if (audit?.status === 'RUNNING' || audit?.status === 'PENDING') {
+            setPollingEnabled(true);
+        } else {
+            setPollingEnabled(false);
+        }
+    }, [audit?.status]);
 
     const { data: evidence, isLoading: isLoadingEvidence } = useQuery({
         queryKey: ['audit-evidence', id],
@@ -75,6 +87,13 @@ export function AuditDetail() {
         a.click();
     };
 
+    const handlePreviewPDF = async () => {
+        const htmlContent = await reportsApi.previewPDF(id!);
+        const blob = new Blob([htmlContent], { type: 'text/html' });
+        const url = window.URL.createObjectURL(blob);
+        window.open(url, '_blank');
+    };
+
     if (isLoadingAudit || isLoadingEvidence) {
         return <div className="flex justify-center p-12"><Loader2 className="h-8 w-8 animate-spin text-indigo-600" /></div>;
     }
@@ -115,30 +134,48 @@ export function AuditDetail() {
                         <Download className="mr-2 h-4 w-4" />
                         Excel
                     </Button>
-                    <Button variant="outline" size="sm" onClick={handleGeneratePDF}>
+                    <Button variant="outline" size="sm" onClick={handlePreviewPDF} className="text-gray-600 border-gray-300 hover:bg-gray-50">
                         <FileText className="mr-2 h-4 w-4" />
-                        PDF Report
+                        Preview HTML
+                    </Button>
+                    <Button variant="default" size="sm" onClick={handleGeneratePDF} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
+                        <Download className="mr-2 h-4 w-4" />
+                        Download PDF
                     </Button>
                 </div>
             </div>
 
             {/* Stats Cards */}
-            <div className="grid gap-6 md:grid-cols-3">
-                <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:bg-gray-800 dark:border-gray-700">
-                    <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Pass Rate</div>
-                    <div className={cn("mt-2 text-4xl font-extrabold",
-                        audit.pass_rate === 100 ? "text-green-600" :
-                            (audit.pass_rate || 0) > 50 ? "text-yellow-600" : "text-red-600"
+            <div className="grid gap-6 md:grid-cols-4">
+                {/* 1. Score */}
+                <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:bg-gray-800 dark:border-gray-700 flex flex-col justify-between">
+                    <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Audit Score</div>
+                    <div className={cn("mt-2 text-5xl font-black tracking-tighter",
+                        (audit.score || 0) >= 90 ? "text-green-600" :
+                            (audit.score || 0) >= 70 ? "text-yellow-600" : "text-red-600"
                     )}>
-                        {audit.pass_rate !== undefined ? `${audit.pass_rate}%` : '-'}
+                        {audit.score !== undefined ? audit.score : '-'}
+                        <span className="text-lg text-gray-400 font-normal ml-1">/100</span>
                     </div>
                 </div>
+
+                {/* 2. Grade */}
+                <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:bg-gray-800 dark:border-gray-700">
+                    <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Audit Grade</div>
+                    <div className="mt-2 text-4xl font-extrabold text-gray-900 dark:text-indigo-400">
+                        {audit.grade || '-'}
+                    </div>
+                </div>
+
+                {/* 3. Total Checks */}
                 <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:bg-gray-800 dark:border-gray-700">
                     <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Checks</div>
                     <div className="mt-2 text-4xl font-extrabold text-gray-900 dark:text-white">
                         {evidence?.length || 0}
                     </div>
                 </div>
+
+                {/* 4. Failures */}
                 <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:bg-gray-800 dark:border-gray-700">
                     <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Failures</div>
                     <div className="mt-2 text-4xl font-extrabold text-red-600 dark:text-red-400">

@@ -24,6 +24,8 @@ class Organization(models.Model):
     
     # Subscription status choices
     SUBSCRIPTION_STATUS_FREE = 'free'
+    SUBSCRIPTION_STATUS_PRO = 'pro'  # Added for plan, though this is status, plan is separate
+    
     SUBSCRIPTION_STATUS_TRIAL = 'trial'
     SUBSCRIPTION_STATUS_ACTIVE = 'active'
     SUBSCRIPTION_STATUS_PAST_DUE = 'past_due'
@@ -37,6 +39,14 @@ class Organization(models.Model):
         (SUBSCRIPTION_STATUS_PAST_DUE, 'Past Due'),
         (SUBSCRIPTION_STATUS_EXPIRED, 'Expired'),
         (SUBSCRIPTION_STATUS_CANCELED, 'Canceled'),
+    ]
+
+    SUBSCRIPTION_PLAN_FREE = 'FREE'
+    SUBSCRIPTION_PLAN_PRO = 'PRO'
+
+    SUBSCRIPTION_PLAN_CHOICES = [
+        (SUBSCRIPTION_PLAN_FREE, 'Free'),
+        (SUBSCRIPTION_PLAN_PRO, 'Pro'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -52,6 +62,14 @@ class Organization(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     # Billing/Subscription fields
+    subscription_plan = models.CharField(
+        max_length=20,
+        choices=SUBSCRIPTION_PLAN_CHOICES,
+        default=SUBSCRIPTION_PLAN_FREE,
+        db_index=True,
+        help_text="Subscription tier (Free vs Pro)"
+    )
+
     subscription_status = models.CharField(
         max_length=20,
         choices=SUBSCRIPTION_CHOICES,
@@ -87,6 +105,13 @@ class Organization(models.Model):
         null=True,
         blank=True,
         help_text="When the 15-day trial started"
+    )
+
+    # Alerting
+    slack_webhook_url = models.URLField(
+        null=True,
+        blank=True,
+        help_text="Slack Webhook URL for regression alerts"
     )
 
     @property

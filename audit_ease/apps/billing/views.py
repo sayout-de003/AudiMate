@@ -62,7 +62,7 @@ class BillingViewSet(viewsets.ViewSet):
             404: OpenApiResponse(description="Organization not found")
         }
     )
-    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    @action(detail=False, methods=['post'], url_path='create-checkout-session', permission_classes=[IsAuthenticated])
     def checkout_session(self, request):
         """
         Create a Stripe Checkout Session
@@ -121,8 +121,8 @@ class BillingViewSet(viewsets.ViewSet):
                     'price': price_id,
                     'quantity': 1,
                 }],
-                success_url=f"{settings.FRONTEND_URL}/billing/success?session_id={{CHECKOUT_SESSION_ID}}",
-                cancel_url=f"{settings.FRONTEND_URL}/billing/cancel",
+                success_url=f"{settings.FRONTEND_URL}/dashboard?success=true",
+                cancel_url=f"{settings.FRONTEND_URL}/pricing?canceled=true",
                 metadata={
                     'organization_id': str(org.id),
                 }

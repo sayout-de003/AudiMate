@@ -9,14 +9,20 @@ from .models import Organization, Membership, OrganizationInvite
 @admin.register(Organization)
 class OrganizationAdmin(admin.ModelAdmin):
     """Admin for Organization model."""
-    list_display = ('name', 'owner_email', 'member_count', 'admin_count', 'created_at')
-    list_filter = ('created_at', 'updated_at')
+    list_display = ('name', 'owner_email', 'subscription_plan', 'subscription_status', 'member_count', 'admin_count', 'created_at')
+    list_editable = ('subscription_plan', 'subscription_status')
+    list_filter = ('subscription_plan', 'subscription_status', 'created_at', 'updated_at')
     search_fields = ('name', 'slug', 'owner__email')
     readonly_fields = ('id', 'slug', 'created_at', 'updated_at')
     
     fieldsets = (
         ('Basic Info', {
             'fields': ('id', 'name', 'slug', 'owner')
+        }),
+        ('Subscription', {
+            'fields': ('subscription_plan', 'subscription_status', 'stripe_customer_id', 'stripe_subscription_id'),
+            'classes': ('collapse',),
+            'description': 'Manage billing details manually.'
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),

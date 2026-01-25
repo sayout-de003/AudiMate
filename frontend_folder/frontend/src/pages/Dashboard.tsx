@@ -8,7 +8,7 @@ import { Button } from '../components/ui/Button';
 export function Dashboard() {
     const navigate = useNavigate();
 
-    const { data: summary, isLoading: summaryLoading, isError: summaryError } = useQuery({
+    const { data: summary, isLoading: summaryLoading } = useQuery({
         queryKey: ['dashboard-summary'],
         queryFn: auditsApi.getSummary,
         retry: false,
@@ -16,7 +16,7 @@ export function Dashboard() {
         throwOnError: false
     });
 
-    const { data: recentAudits, isLoading: auditsLoading, isError: auditsError } = useQuery({
+    const { data: recentAudits, isLoading: auditsLoading } = useQuery({
         queryKey: ['audits'],
         queryFn: auditsApi.list,
         retry: false,
@@ -28,7 +28,7 @@ export function Dashboard() {
         queryFn: integrationsApi.list
     });
 
-    const githubIntegration = integrations.find(i => i.provider.toUpperCase() === 'GITHUB' && i.is_active);
+    const githubIntegration = integrations.find(i => i.provider.toUpperCase() === 'GITHUB' && i.status === 'active');
     const hasGitHub = !!githubIntegration;
     const latestAudits = recentAudits?.slice(0, 5) || [];
 
@@ -139,10 +139,13 @@ export function Dashboard() {
                                         </div>
                                     </div>
                                     <div className="flex items-center space-x-4">
-                                        {audit.pass_rate !== undefined && (
+                                        {audit.status === 'COMPLETED' && (
                                             <div className="text-right">
-                                                <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                                                    {audit.pass_rate.toFixed(1)}% Pass
+                                                <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                                                    Score: {audit.score}
+                                                </div>
+                                                <div className="text-xs text-gray-400">
+                                                    Grade: {audit.grade}
                                                 </div>
                                             </div>
                                         )}

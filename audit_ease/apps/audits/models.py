@@ -50,6 +50,8 @@ class Audit(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     score = models.IntegerField(default=0, help_text="Audit compliance score (0-100)")
+    grade = models.CharField(max_length=2, null=True, blank=True, help_text="Letter grade (A, B, C, F)")
+    details = models.JSONField(default=dict, help_text="Detailed scoring breakdown")
 
     class Meta:
         # Ensure organization isolation: Company A's audits can't be accessed by Company B
@@ -68,11 +70,12 @@ class Evidence(models.Model):
         ('PASS', 'Pass'),
         ('FAIL', 'Fail'),
         ('ERROR', 'Error'),
+        ('RISK_ACCEPTED', 'Risk Accepted'),
     ]
 
     audit = models.ForeignKey(Audit, on_delete=models.CASCADE, related_name='evidence')
     question = models.ForeignKey(Question, on_delete=models.CASCADE)
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES)
     raw_data = models.JSONField(
         default=dict,
         help_text="Raw API response or logs proving the result. Contains actual evidence from external systems."
@@ -85,6 +88,31 @@ class Evidence(models.Model):
     # NEW FIELDS FOR INDUSTRY STANDARD PROOFS
     screenshot = models.ImageField(upload_to='audit_proofs/%Y/%m/', null=True, blank=True)
     remediation_steps = models.TextField(null=True, blank=True)
+    
+    # WORKFLOW FIELDS
+    WORKFLOW_STATUS_CHOICES = [
+        ('OPEN', 'Open'),
+        ('FIXED', 'Fixed'),
+        ('RISK_ACCEPTED', 'Risk Accepted'),
+    ]
+    workflow_status = models.CharField(
+        max_length=20, 
+        choices=WORKFLOW_STATUS_CHOICES, 
+        default='OPEN',
+        help_text="Manual workflow status for tracking remediation"
+    )
+    risk_acceptance_reason = models.TextField(
+        blank=True, 
+        null=True,
+        help_text="Reason for accepting the risk if workflow_status is RISK_ACCEPTED"
+    )
+    manual_proof = models.FileField(
+        upload_to='evidence/proofs/', 
+        blank=True, 
+        null=True,
+        help_text="Upload proof of manual fix (e.g., PDF, Image)"
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -93,6 +121,7 @@ class Evidence(models.Model):
         indexes = [
             models.Index(fields=['audit', 'status']),
             models.Index(fields=['question', 'status']),
+            models.Index(fields=['audit', 'workflow_status']),
         ]
         ordering = ['-created_at']
 
@@ -132,3 +161,26 @@ class AuditSnapshot(models.Model):
 
     def __str__(self):
         return f"Snapshot {self.version}: {self.name} ({self.audit.id})"
+
+class SecuritySnapshot(models.Model):
+    """
+    Daily/Per-scan high-level stats for charting (Historical Trending).
+    """
+    organization = models.ForeignKey(
+        'organizations.Organization',
+        on_delete=models.CASCADE,
+        related_name='security_snapshots'
+    )
+    date = models.DateField(auto_now_add=True, db_index=True)
+    score = models.IntegerField()
+    grade = models.CharField(max_length=2)
+    critical_count = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ['-date']
+        indexes = [
+            models.Index(fields=['organization', 'date']),
+        ]
+
+    def __str__(self):
+        return f"{self.organization.name} - {self.date} ({self.score})"

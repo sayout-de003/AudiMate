@@ -38,7 +38,10 @@ from .serializers import (
     InviteAcceptSerializer,
     OrganizationInviteListSerializer,
 )
+from apps.audits.models import SecuritySnapshot
+from apps.audits.serializers import SecuritySnapshotSerializer
 from .permissions import IsSameOrganization, IsOrgAdmin
+from apps.core.permissions import HasProPlan
 from apps.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -156,6 +159,24 @@ class OrganizationViewSet(viewsets.ModelViewSet):
             f"Organization {org.id} ({org.name}) DELETED by {user.email}"
         )
         instance.delete()
+
+    @action(detail=True, methods=['get'], permission_classes=[
+        permissions.IsAuthenticated, IsSameOrganization, HasProPlan
+    ])
+    def history(self, request, pk=None):
+        """
+        GET /api/v1/organizations/{id}/history/
+        Return last 30 SecuritySnapshot records.
+        """
+        org = self.get_object()
+        # Ensure user has access (handled by IsSameOrganization/get_object)
+        
+        snapshots = SecuritySnapshot.objects.filter(
+            organization=org
+        ).order_by('-date')[:30]
+        
+        serializer = SecuritySnapshotSerializer(snapshots, many=True)
+        return Response(serializer.data)
 
     @action(detail=True, methods=['post'], permission_classes=[
         permissions.IsAuthenticated, IsSameOrganization, IsOrgAdmin
