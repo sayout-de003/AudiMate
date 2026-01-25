@@ -22,8 +22,7 @@ from .views import (
     EvidenceMilestoneView,
     SessionFinalizeView,
 )
-from .views_export import export_audit_csv_streaming, ExportAuditReportView
-
+from .views_export import AuditExportCSVView, ExportAuditReportView
 app_name = 'audits'
 
 urlpatterns = [
@@ -42,7 +41,7 @@ urlpatterns = [
     path('<uuid:audit_id>/evidence/create/', EvidenceCreateView.as_view(), name='audit-evidence-create'),
     
     # Export audit as CSV (Premium feature)
-    path('<uuid:audit_id>/export/csv/', export_audit_csv_streaming, name='audit-export-csv'),
+    path('<uuid:audit_id>/export/csv/', AuditExportCSVView.as_view(), name='audit-export-csv'),
     path('<uuid:audit_id>/export/xlsx/', ExportAuditReportView.as_view(), name='audit-export-xlsx'),
     
     # Executive dashboard summary with aggregated stats

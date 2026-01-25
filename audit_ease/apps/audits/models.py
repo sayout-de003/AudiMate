@@ -85,7 +85,7 @@ class Evidence(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('audit', 'question')
+        # unique_together = ('audit', 'question')  # Removed to allow multiple repos per question
         # Optimize queries for audit result retrieval
         indexes = [
             models.Index(fields=['audit', 'status']),
