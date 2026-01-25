@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { integrationsApi } from '../api/integrations';
 import { useQueryClient } from '@tanstack/react-query';
@@ -10,15 +10,20 @@ export function GitHubCallback() {
     const queryClient = useQueryClient();
     const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing');
     const [errorMessage, setErrorMessage] = useState<string>('');
+    const hasProcessed = useRef(false);
 
     useEffect(() => {
         const handleCallback = async () => {
+            // Prevent double-execution (React StrictMode)
+            if (hasProcessed.current) return;
+            hasProcessed.current = true;
+
             // Check for error from GitHub
             const error = searchParams.get('error');
             if (error) {
                 setStatus('error');
-                setErrorMessage(error === 'access_denied' 
-                    ? 'GitHub authorization was cancelled.' 
+                setErrorMessage(error === 'access_denied'
+                    ? 'GitHub authorization was cancelled.'
                     : `GitHub authorization error: ${error}`);
                 setTimeout(() => {
                     navigate('/integrations');
@@ -42,18 +47,20 @@ export function GitHubCallback() {
             try {
                 // Exchange code for token via backend
                 const response = await integrationsApi.handleCallback(code, state || undefined);
-                
+
                 if (response.status === 'connected') {
                     setStatus('success');
                     // Invalidate integrations query to refresh the list
                     queryClient.invalidateQueries({ queryKey: ['integrations'] });
-                    
+
                     // Get the redirect path from localStorage (saved before OAuth redirect)
                     const redirectPath = localStorage.getItem('github_oauth_redirect') || '/integrations';
+                    console.log('GitHub Callback Success. Redirecting to:', redirectPath);
                     localStorage.removeItem('github_oauth_redirect');
-                    
+
                     // Redirect after a brief success message
                     setTimeout(() => {
+                        console.log('Executing navigation to:', redirectPath);
                         navigate(redirectPath);
                     }, 2000);
                 } else {
@@ -61,11 +68,15 @@ export function GitHubCallback() {
                 }
             } catch (error: any) {
                 console.error('GitHub callback error:', error);
+
+                // If it's a 401/Bad Credentials but we already processed (race condition?), 
+                // we might want to handle it gracefully, but strict-mode fix should prevent it entirely.
+
                 setStatus('error');
                 setErrorMessage(
-                    error?.response?.data?.error || 
-                    error?.response?.data?.detail || 
-                    error?.message || 
+                    error?.response?.data?.error ||
+                    error?.response?.data?.detail ||
+                    error?.message ||
                     'Failed to connect GitHub. Please try again.'
                 );
                 setTimeout(() => {

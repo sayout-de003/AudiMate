@@ -7,6 +7,7 @@ export const api = axios.create({
     headers: {
         'Content-Type': 'application/json',
     },
+    withCredentials: true,
 });
 
 api.interceptors.request.use(
@@ -15,6 +16,13 @@ api.interceptors.request.use(
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
+
+        // Add Organization Context
+        const orgId = localStorage.getItem('current_org_id');
+        if (orgId) {
+            config.headers['X-Organization-ID'] = orgId;
+        }
+
         return config;
     },
     (error) => Promise.reject(error)

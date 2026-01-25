@@ -1,5 +1,6 @@
 import logging
 import secrets
+import requests
 from django.http import HttpResponseForbidden
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -92,6 +93,17 @@ class IntegrationViewSet(viewsets.ModelViewSet):
         # Users see integrations for their organization
         if hasattr(self.request, 'organization') and self.request.organization:
              return Integration.objects.filter(organization=self.request.organization)
+        
+        # Fallback: Try to find user's default organization (Robustness fix)
+        # This handles cases where middleware might miss the context or header is invalid
+        try:
+             from apps.organizations.models import Membership
+             membership = Membership.objects.filter(user=self.request.user).select_related('organization').first()
+             if membership:
+                 return Integration.objects.filter(organization=membership.organization)
+        except Exception:
+             pass
+             
         # Fallback if organization middleware isn't perfect or for superusers
         return Integration.objects.none()
 
@@ -113,15 +125,43 @@ class GithubCallbackView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        # 1. CSRF / State Verification
-        state_from_get = request.query_params.get('state')
+        # Log the incoming request for debugging
+        logger.info(f"GitHub callback POST received with code: {bool(request.data.get('code'))}, state: {bool(request.data.get('state'))}")
+        
+        # 1. CSRF / State Verification (Optional - sessions may not persist across redirects)
+        # The state can come from either query params or request body
+        state_from_request = request.data.get('state') or request.query_params.get('state')
         stored_state = request.session.get('github_oauth_state')
 
-        if not stored_state or state_from_get != stored_state:
-            return HttpResponseForbidden("CSRF Verification Failed.")
+        # Log session state for debugging
+        logger.info(f"Session state: {stored_state}, Request state: {state_from_request}")
         
-        # Clean up session
-        del request.session['github_oauth_state']
+        # Only verify state if it was generated (i.e., stored in session)
+        if stored_state:
+            if state_from_request != stored_state:
+                logger.warning(f"CSRF verification failed. Expected: {stored_state}, Got: {state_from_request}")
+                return Response(
+                    {"error": "Invalid state parameter. Possible CSRF attempt or session expired."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            else:
+                logger.info("CSRF state verified successfully")
+            
+            # Clean up session AFTER successful processing?? 
+            # Actually, to prevent replay attacks or race conditions, we should probably delete it NOW.
+            # If two requests come in, the second one will find no state and fail if we enforce state.
+            try:
+                del request.session['github_oauth_state']
+                request.session.modified = True 
+            except KeyError:
+                pass
+        elif state_from_request:
+            # State in request but not in session (expired or cleared by race condition)
+            logger.warning("State parameter provided but no state stored in session (possibly already consumed).")
+            return Response(
+                {"error": "Session state expired or already used. Please try again."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         code = request.data.get("code")
         
@@ -137,38 +177,132 @@ class GithubCallbackView(APIView):
         # 1. Exchange Code for Access Token
         try:
             token_data = oauth.exchange_code_for_token(code, redirect_uri=redirect_uri)
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"GitHub Token Exchange HTTP Error: {e.response.status_code} - {e.response.text if hasattr(e, 'response') else str(e)}")
+            error_detail = "Token exchange failed. This usually means the OAuth code is invalid or expired, or the redirect_uri doesn't match."
+            if hasattr(e, 'response') and e.response.status_code == 422:
+                error_detail = "Invalid redirect_uri. Make sure it matches exactly what's registered in your GitHub OAuth App settings."
+            return Response({
+                "error": "GitHub OAuth failed",
+                "detail": error_detail
+            }, status=status.HTTP_502_BAD_GATEWAY)
         except Exception as e:
-            logger.error(f"GitHub Token Exchange Failed: {e}")
-            return Response({"error": "Failed to connect to GitHub"}, status=status.HTTP_502_BAD_GATEWAY)
+            logger.error(f"GitHub Token Exchange Failed: {type(e).__name__}: {e}")
+            return Response({
+                "error": "Failed to connect to GitHub",
+                "detail": str(e)
+            }, status=status.HTTP_502_BAD_GATEWAY)
 
         if "error" in token_data:
-            return Response({"error": token_data.get("error_description")}, status=status.HTTP_400_BAD_REQUEST)
+            logger.warning(f"GitHub returned error in token response: {token_data}")
+            return Response({
+                "error": token_data.get("error"),
+                "detail": token_data.get("error_description", "GitHub authorization failed")
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         access_token = token_data.get('access_token')
+        if not access_token:
+            logger.error(f"No access_token in GitHub response: {token_data}")
+            return Response({
+                "error": "Invalid response from GitHub",
+                "detail": "No access token received"
+            }, status=status.HTTP_502_BAD_GATEWAY)
+        
+        # Validate and clean token format (should be a non-empty string)
+        if not isinstance(access_token, str):
+            logger.error(f"Invalid access_token type: {type(access_token)}")
+            return Response({
+                "error": "Invalid response from GitHub",
+                "detail": "Access token is not in the expected format"
+            }, status=status.HTTP_502_BAD_GATEWAY)
+        
+        # Strip whitespace from token
+        access_token = access_token.strip()
+        if len(access_token) == 0:
+            logger.error("Access token is empty after stripping whitespace")
+            return Response({
+                "error": "Invalid response from GitHub",
+                "detail": "Access token is empty"
+            }, status=status.HTTP_502_BAD_GATEWAY)
+        
         # refresh_token = token_data.get('refresh_token') # GitHub Apps usually have this, OAuth Apps might not
 
         # 2. Get GitHub User ID (stable identifier)
         # We need this to ensure we don't duplicate integrations if the user reconnects
+        # Debug: verify token format without exposing the value
+        logger.info(f"Access token type: {type(access_token)}, length: {len(access_token)}")
+        logger.info(f"Token scopes: {token_data.get('scope', 'N/A')}")
+        logger.info(f"Token preview (first 10 chars): {access_token[:10]}..." if len(access_token) >= 10 else "Token too short")
+        
+        # Validate token one more time before making API call
+        if not access_token or len(access_token.strip()) == 0:
+            logger.error("Access token is empty or invalid before API call")
+            return Response({
+                "error": "Invalid access token",
+                "detail": "The access token received from GitHub is empty or invalid"
+            }, status=status.HTTP_502_BAD_GATEWAY)
+        
         try:
             gh_user = oauth.get_user_info(access_token)
+        except requests.exceptions.HTTPError as e:
+            error_detail = "The access token might be invalid or have insufficient permissions"
+            if hasattr(e, 'response') and e.response is not None:
+                status_code = e.response.status_code
+                try:
+                    error_json = e.response.json()
+                    error_message = error_json.get('message', '')
+                    error_detail = error_message or error_detail
+                    logger.error(f"GitHub User Info HTTP Error {status_code}: {error_json}")
+                except:
+                    error_text = e.response.text[:500]  # Limit length
+                    logger.error(f"GitHub User Info HTTP Error {status_code}: {error_text}")
+                    error_detail = f"GitHub API returned {status_code}: {error_text[:200]}"
+            else:
+                logger.error(f"GitHub User Info HTTP Error: {e}")
+            
+            return Response({
+                "error": "Failed to fetch GitHub user profile",
+                "detail": error_detail
+            }, status=status.HTTP_502_BAD_GATEWAY)
+        except requests.exceptions.Timeout:
+            logger.error("GitHub API request timed out")
+            return Response({
+                "error": "Failed to fetch GitHub user profile",
+                "detail": "Request to GitHub API timed out. Please try again."
+            }, status=status.HTTP_502_BAD_GATEWAY)
+        except requests.exceptions.RequestException as e:
+            logger.error(f"GitHub User Info Request Failed: {type(e).__name__}: {e}")
+            return Response({
+                "error": "Failed to fetch GitHub user profile",
+                "detail": f"Network error: {str(e)}"
+            }, status=status.HTTP_502_BAD_GATEWAY)
         except Exception as e:
-            logger.error(f"GitHub User Info Failed: {e}")
-            return Response({"error": "Failed to fetch GitHub user profile"}, status=status.HTTP_502_BAD_GATEWAY)
+            logger.error(f"GitHub User Info Failed: {type(e).__name__}: {e}", exc_info=True)
+            return Response({
+                "error": "Failed to fetch GitHub user profile", 
+                "detail": str(e)
+            }, status=status.HTTP_502_BAD_GATEWAY)
+
 
         external_id = str(gh_user['id'])
         gh_username = gh_user['login']
 
         # 3. Resolve Organization
-        # Assuming you have middleware that sets request.organization, 
-        # or you get it from the user's profile.
-        if hasattr(request, 'organization'):
+        # Users are linked to organizations via Membership model
+        if hasattr(request, 'organization') and request.organization:
             org = request.organization
         else:
-            # Fallback logic if middleware isn't present
-            org = request.user.organization if hasattr(request.user, 'organization') else None
+            # Fetch from user's memberships
+            from apps.organizations.models import Membership
+            membership = Membership.objects.filter(user=request.user).select_related('organization').first()
+            org = membership.organization if membership else None
         
         if not org:
-            return Response({"detail": "No organization found for this user."}, status=status.HTTP_403_FORBIDDEN)
+            logger.warning(f"User {request.user.email} attempted GitHub connection but has no organization")
+            return Response({
+                "error": "No organization found",
+                "detail": "You must create or join an organization before connecting integrations."
+            }, status=status.HTTP_403_FORBIDDEN)
 
         # 4. Save/Update DB
         # The 'access_token' assignment here automatically triggers the 

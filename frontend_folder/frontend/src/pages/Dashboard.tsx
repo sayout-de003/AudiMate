@@ -28,7 +28,7 @@ export function Dashboard() {
         queryFn: integrationsApi.list
     });
 
-    const githubIntegration = integrations.find(i => i.provider === 'GITHUB' && i.is_active);
+    const githubIntegration = integrations.find(i => i.provider.toUpperCase() === 'GITHUB' && i.is_active);
     const hasGitHub = !!githubIntegration;
     const latestAudits = recentAudits?.slice(0, 5) || [];
 
@@ -61,8 +61,8 @@ export function Dashboard() {
                             </p>
                         </div>
                     </div>
-                    <Button 
-                        size="sm" 
+                    <Button
+                        size="sm"
                         onClick={() => navigate('/integrations')}
                         className="bg-yellow-600 hover:bg-yellow-700 text-white"
                     >

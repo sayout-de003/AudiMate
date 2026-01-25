@@ -18,7 +18,7 @@ export function Integrations() {
             // Save current location for redirect after OAuth
             const currentPath = window.location.pathname;
             localStorage.setItem('github_oauth_redirect', currentPath);
-            
+
             // Redirect to GitHub OAuth
             if (data.authorization_url) {
                 window.location.href = data.authorization_url;
@@ -48,8 +48,8 @@ export function Integrations() {
         );
     }
 
-    const githubIntegrations = integrations.filter(i => i.provider === 'GITHUB');
-    const awsIntegrations = integrations.filter(i => i.provider === 'AWS');
+    const githubIntegrations = integrations.filter(i => i.provider.toUpperCase() === 'GITHUB');
+    const awsIntegrations = integrations.filter(i => i.provider.toUpperCase() === 'AWS');
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
@@ -79,9 +79,9 @@ export function Integrations() {
                             <div className="flex flex-col items-end gap-2">
                                 <Button
                                     onClick={() => connectGitHubMutation.mutate()}
-                                    disabled={connectGitHubMutation.isPending}
+                                    disabled={connectGitHubMutation.isPending || connectGitHubMutation.isSuccess}
                                 >
-                                    {connectGitHubMutation.isPending ? (
+                                    {connectGitHubMutation.isPending || connectGitHubMutation.isSuccess ? (
                                         <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Connecting...</>
                                     ) : (
                                         <><Plus className="mr-2 h-4 w-4" /> Connect GitHub</>
@@ -89,9 +89,9 @@ export function Integrations() {
                                 </Button>
                                 {connectGitHubMutation.isError && (
                                     <p className="text-xs text-red-600 dark:text-red-400 max-w-xs text-right">
-                                        {connectGitHubMutation.error?.response?.data?.error || 
-                                         connectGitHubMutation.error?.message || 
-                                         'Failed to connect. Please check your configuration.'}
+                                        {connectGitHubMutation.error?.response?.data?.error ||
+                                            connectGitHubMutation.error?.message ||
+                                            'Failed to connect. Please check your configuration.'}
                                     </p>
                                 )}
                             </div>

@@ -11,9 +11,9 @@ export function Audits() {
     const queryClient = useQueryClient();
     const navigate = useNavigate();
     const [pollingEnabled, setPollingEnabled] = useState(false);
-    
-    const { data: audits, isLoading } = useQuery({ 
-        queryKey: ['audits'], 
+
+    const { data: audits, isLoading } = useQuery({
+        queryKey: ['audits'],
         queryFn: auditsApi.list,
         refetchInterval: pollingEnabled ? 5000 : false, // Poll every 5 seconds when enabled
     });
@@ -23,7 +23,7 @@ export function Audits() {
         queryFn: integrationsApi.list
     });
 
-    const githubIntegration = integrations.find(i => i.provider === 'GITHUB' && i.is_active);
+    const githubIntegration = integrations.find(i => i.provider.toUpperCase() === 'GITHUB' && i.status === 'active');
     const hasGitHub = !!githubIntegration;
 
     // Check if there's a running audit and enable polling
@@ -55,8 +55,8 @@ export function Audits() {
                         <div className="flex items-center gap-2 px-4 py-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                             <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
                             <span className="text-sm text-yellow-700 dark:text-yellow-300">Connect GitHub to start audits</span>
-                            <Button 
-                                size="sm" 
+                            <Button
+                                size="sm"
                                 variant="outline"
                                 onClick={() => navigate('/integrations')}
                                 className="ml-2"
@@ -66,8 +66,8 @@ export function Audits() {
                             </Button>
                         </div>
                     )}
-                    <Button 
-                        onClick={() => startAuditMutation.mutate()} 
+                    <Button
+                        onClick={() => startAuditMutation.mutate()}
                         disabled={startAuditMutation.isPending || !hasGitHub}
                         title={!hasGitHub ? 'Please connect GitHub first' : ''}
                     >

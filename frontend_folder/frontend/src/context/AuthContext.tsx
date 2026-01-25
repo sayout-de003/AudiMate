@@ -23,6 +23,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (token) {
                 const userData = await authApi.getMe();
                 setUser(userData);
+                // Store current organization ID for API client
+                if (userData.current_organization) {
+                    localStorage.setItem('current_org_id', userData.current_organization);
+                }
             }
         } catch (error) {
             console.error('Failed to fetch user:', error);
@@ -45,6 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const logout = () => {
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
+        localStorage.removeItem('current_org_id');
         setUser(null);
     };
 

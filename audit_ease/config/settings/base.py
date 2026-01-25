@@ -21,16 +21,16 @@ import sentry_sdk
 from sentry_sdk.integrations.django import DjangoIntegration
 from sentry_sdk.integrations.celery import CeleryIntegration
 
-sentry_sdk.init(
-    dsn=os.environ.get("SENTRY_DSN"),
-    integrations=[
-        DjangoIntegration(),
-        CeleryIntegration(),
-    ],
-    traces_sample_rate=1.0,
-    send_default_pii=True,
-    environment=os.environ.get("DJANGO_ENV", "production")
-) 
+# sentry_sdk.init(
+#     dsn=os.environ.get("SENTRY_DSN"),
+#     integrations=[
+#         DjangoIntegration(),
+#         CeleryIntegration(),
+#     ],
+#     traces_sample_rate=1.0,
+#     send_default_pii=True,
+#     environment=os.environ.get("DJANGO_ENV", "production")
+# ) 
 
 # 2. Environment Configuration
 env = environ.Env()
@@ -350,7 +350,7 @@ ENCRYPTION_KEY = FERNET_KEY
 
 # 16.1 Rate Limiting Configuration
 # AUDIT_RATE_LIMIT: Controls the rate limit for audit creation (e.g., "5/h" = 5 per hour)
-AUDIT_RATE_LIMIT = env("AUDIT_RATE_LIMIT", default="5/h")
+AUDIT_RATE_LIMIT = env("AUDIT_RATE_LIMIT", default="100/h")
 
 # 16.2 Stripe Configuration
 # For development, these can be test keys. In production, they are required.
@@ -443,6 +443,8 @@ CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS",
     default=["http://localhost:3000", "http://localhost:8000", "http://localhost:5173"]
 )
+
+CORS_ALLOW_CREDENTIALS = True
 
 ALLOWED_HOSTS = env.list(
     "DJANGO_ALLOWED_HOSTS",

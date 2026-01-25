@@ -11,23 +11,29 @@ class GitHubScanner:
     Uses PyGithub for API interactions.
     """
 
-    def __init__(self, user, repo_name):
+    def __init__(self, user, repo_name, token=None):
         """
         Initialize the scanner with a user and repository name.
         
         Args:
             user: The user triggering the scan (used to fetch OAuth token).
             repo_name: Full name of the repository (e.g., "owner/repo").
+            token: Optional explicit access token (overrides SocialToken lookup).
         """
         self.user = user
         self.repo_name = repo_name
+        self.token = token
         self.github = self._get_github_client()
         self.repo = self._get_repo()
 
     def _get_github_client(self):
         """
-        Initialize authenticated PyGithub client using the user's SocialToken.
+        Initialize authenticated PyGithub client.
+        Uses explicit token if provided, otherwise looks up SocialToken.
         """
+        if self.token:
+            return Github(self.token)
+
         try:
             # Fetch the GitHub token for the user
             social_token = SocialToken.objects.get(

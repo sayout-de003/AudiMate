@@ -10,7 +10,11 @@ SECRET_KEY = env(
 ALLOWED_HOSTS = ["localhost", "0.0.0.0", "127.0.0.1", "testserver"]
 
 # 2. CORS (Allow everything in Dev)
-CORS_ALLOW_ALL_ORIGINS = True
+# 2. CORS
+# When CORS_ALLOW_CREDENTIALS is True (in base.py), we cannot use ALLOW_ALL_ORIGINS = True.
+# We must use specific origins.
+CORS_ALLOW_ALL_ORIGINS = False
+
 
 
 

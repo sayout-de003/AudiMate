@@ -2,14 +2,16 @@ import { api } from './client';
 
 export interface Integration {
     id: string;
-    provider: 'GITHUB' | 'AWS';
+    provider: 'GITHUB' | 'AWS' | 'github' | 'aws';  // Accept both cases
     name: string;
     created_at: string;
-    is_active: boolean;
+    status: 'active' | 'disconnected' | 'error';
+    external_id: string;
+    config: any;
 }
 
 export interface IntegrationData {
-    provider: 'GITHUB' | 'AWS';
+    provider: 'GITHUB' | 'AWS' | 'github' | 'aws';  // Accept both cases
     name: string;
     access_token: string;
 }
@@ -45,7 +47,7 @@ export const integrationsApi = {
     },
 
     handleCallback: async (code: string, state?: string) => {
-        const { data } = await api.post('/integrations/github/callback/', { 
+        const { data } = await api.post('/integrations/github/callback/', {
             code,
             ...(state && { state })
         });
