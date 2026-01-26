@@ -110,15 +110,33 @@ def run_audit_task(self, audit_id):
 
             # --- HELPER: Save Evidence ---
             def save_finding(question_key, title, status, severity, raw_data, comment, remediation=""):
-                q = get_question(question_key, title, severity)
-                Evidence.objects.create(
-                    audit=audit,
-                    question=q,
-                    status=status,
-                    raw_data=raw_data,
-                    comment=comment,
-                    remediation_steps=remediation
-                )
+                try:
+                    q = get_question(question_key, title, severity)
+                    Evidence.objects.create(
+                        audit=audit,
+                        question=q,
+                        status=status,
+                        raw_data=raw_data,
+                        comment=comment,
+                        remediation_steps=remediation
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to save evidence for {question_key}: {e} | Data: {raw_data}")
+                    # Fallback: Try to save with stringified data to avoid losing the check result
+                    try:
+                         # Ensure Question exists for fallback
+                        q_fallback = get_question(question_key, title, severity)
+                        safe_data = {'serialization_error': str(e), 'raw_data_repr': str(raw_data)}
+                        Evidence.objects.create(
+                            audit=audit,
+                            question=q_fallback,
+                            status=status,
+                            raw_data=safe_data,
+                            comment=comment + f" [System Note: Data serialization failed]",
+                            remediation_steps=remediation
+                        )
+                    except Exception as e2:
+                        logger.error(f"Fallback evidence save failed for {question_key}: {e2}")
 
             # === ORG LEVEL CHECKS ===
             # Run these once if target is an Organization

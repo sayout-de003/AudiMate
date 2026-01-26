@@ -1,0 +1,272 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Audit Report - {{ audit.id }}</title>
+    <style>
+        /* === Big 4 Print Styling === */
+        @page {
+            size: A4;
+            margin: 2.5cm;
+
+            @top-right {
+                content: "Confidential Audit Report";
+                font-family: sans-serif;
+                font-size: 8pt;
+                color: #888;
+            }
+
+            @bottom-center {
+                content: "Page " counter(page);
+                font-family: sans-serif;
+                font-size: 8pt;
+                color: #888;
+            }
+        }
+
+        @page cover {
+            margin: 0;
+
+            @top-right {
+                content: none;
+            }
+
+            @bottom-center {
+                content: none;
+            }
+        }
+
+        body {
+            font-family: "Roboto", "Segoe UI", sans-serif;
+            font-size: 10pt;
+            color: #333;
+            line-height: 1.4;
+        }
+
+        /* Cover Page */
+        .cover-page {
+            page: cover;
+            height: 100vh;
+            background: #1a237e;
+            color: white;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .cover-score {
+            font-size: 96pt;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+
+        .score-pass {
+            color: #4caf50;
+        }
+
+        .score-fail {
+            color: #f44336;
+        }
+
+        /* Layout Utilities */
+        .section-break {
+            page-break-before: always;
+        }
+
+        .no-break {
+            page-break-inside: avoid;
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+        }
+
+        .col {
+            flex: 1;
+        }
+
+        /* Typography */
+        h1 {
+            color: #1a237e;
+            border-bottom: 2px solid #1a237e;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+            font-size: 18pt;
+        }
+
+        h2 {
+            font-size: 14pt;
+            margin-top: 20px;
+            color: #333;
+        }
+
+        /* Findings Blocks */
+        .check-block {
+            border: 1px solid #ddd;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            background: #fff;
+            page-break-inside: avoid;
+            /* Keeps header and evidence together */
+        }
+
+        /* Status Borders */
+        .status-PASS {
+            border-left: 6px solid #2e7d32;
+        }
+
+        .status-FAIL {
+            border-left: 6px solid #c62828;
+        }
+
+        .check-header {
+            padding: 12px 15px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .check-body {
+            padding: 15px;
+        }
+
+        /* Badges */
+        .badge {
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 8pt;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .bg-PASS {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .bg-FAIL {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .severity-CRITICAL {
+            color: #c62828;
+            font-weight: bold;
+        }
+
+        .severity-HIGH {
+            color: #e65100;
+        }
+
+        .severity-MEDIUM {
+            color: #f9a825;
+        }
+
+        /* Evidence Section */
+        .evidence-box {
+            margin-top: 15px;
+            padding: 15px;
+            background: #fafafa;
+            border: 1px dashed #ccc;
+            border-radius: 4px;
+        }
+
+        .evidence-img {
+            display: block;
+            margin-top: 10px;
+            max-height: 250px;
+            /* Conserve space */
+            max-width: 100%;
+            border: 1px solid #ddd;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="cover-page">
+        <div style="font-size: 24pt; letter-spacing: 2px;">AUDIT REPORT</div>
+        <div class="cover-score {% if score >= 80 %}score-pass{% else %}score-fail{% endif %}">
+            {{ score }}
+        </div>
+        <div style="font-size: 14pt; opacity: 0.8;">OUT OF 100</div>
+        <div style="margin-top: 40px; font-size: 12pt;">
+            <p>{{ audit.organization.name }}</p>
+            <p>{{ audit.created_at|date:"F j, Y" }}</p>
+        </div>
+    </div>
+
+    <div class="section-break">
+        <h1>Executive Summary</h1>
+        <div class="row">
+            <div class="col">
+                <h3>Pass/Fail Overview</h3>
+                <div style="background: #f5f5f5; padding: 15px; border-radius: 8px;">
+                    <p><strong>Passing:</strong> {{ stats.passing }}</p>
+                    <p><strong>Critical Failures:</strong> {{ stats.critical }}</p>
+                    <p><strong>High Failures:</strong> {{ stats.high }}</p>
+                </div>
+            </div>
+            <div class="col" style="text-align: center;">
+                {% if pie_chart %}
+                <img src="data:image/png;base64,{{ pie_chart }}" style="max-height: 200px;">
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="section-break">
+        <h1>Detailed Audit Findings</h1>
+
+        {% if not checks %}
+        <p style="color: red; padding: 20px;">DEBUG ERROR: No checks found. Please check 'views.py'.</p>
+        {% endif %}
+
+        {% for check in checks %}
+        <div class="check-block status-{{ check.status }} no-break">
+            <div class="check-header">
+                <div>
+                    <strong>{{ check.rule_id }}</strong>: {{ check.title }}
+                </div>
+                <span class="badge bg-{{ check.status }}">{{ check.status }}</span>
+            </div>
+
+            <div class="check-body">
+                <div style="margin-bottom: 10px; font-size: 9pt; color: #666;">
+                    Severity: <span class="severity-{{ check.severity }}">{{ check.severity }}</span>
+                    | Evidence State: <strong>{{ check.evidence.status_state|default:"N/A" }}</strong>
+                </div>
+
+                <p>{{ check.description }}</p>
+
+                <div class="evidence-box">
+                    <strong>Evidence & Artifacts:</strong>
+
+                    {% if check.evidence.screenshot %}
+                    <img src="file://{{ check.evidence.screenshot.path }}" class="evidence-img">
+                    <div style="font-size: 8pt; color: #666; margin-top: 5px;">
+                        File: {{ check.evidence.screenshot.name }}
+                    </div>
+                    {% elif check.evidence.text_content %}
+                    <pre style="font-size: 8pt; margin-top: 5px;">{{ check.evidence.text_content }}</pre>
+                    {% else %}
+                    <div style="color: #888; font-style: italic; margin-top: 5px;">
+                        No visual evidence required or uploaded.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+</body>
+
+</html>

@@ -29,6 +29,19 @@ except ImportError:
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 
+# WeasyPrint & Utils
+from django.template.loader import render_to_string
+from utils.scoring import calculate_audit_score
+try:
+    from weasyprint import HTML, CSS
+except ImportError:
+    pass
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import base64
+
 logger = logging.getLogger(__name__)
 
 class AuditViewSet(viewsets.ReadOnlyModelViewSet):
@@ -367,3 +380,110 @@ class AuditViewSet(viewsets.ReadOnlyModelViewSet):
         except Exception as e:
             logger.error(f"PDF Export Error: {e}")
             return Response({"error": "Failed to generate PDF"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    @action(detail=True, methods=['get'])
+    def report(self, request, pk=None):
+        """
+        Generate a professional high-fidelity PDF report using WeasyPrint.
+        """
+        try:
+            audit = self.get_object()
+            
+            # 1. Scoring
+            score = calculate_audit_score(audit)
+            audit.score_value = score
+            audit.save(update_fields=['score_value'])
+
+            # 2. Stats Calculation
+            # We need specific counts for the template: passing, critical, high
+            evidence_qs = Evidence.objects.filter(audit=audit).select_related('question')
+            
+            # DEBUG
+            print(f"DEBUG: Audit ID: {audit.id}")
+            print(f"DEBUG: Evidence Count: {evidence_qs.count()}")
+            
+            total_checks = evidence_qs.count()
+            passed_checks = evidence_qs.filter(status='PASS').count()
+            failed_checks = evidence_qs.filter(status='FAIL').count()
+            
+            critical_fails = evidence_qs.filter(status='FAIL', question__severity='CRITICAL').count()
+            high_fails = evidence_qs.filter(status='FAIL', question__severity='HIGH').count()
+            
+            stats = {
+                'passing': passed_checks,
+                'critical': critical_fails,
+                'high': high_fails,
+                'failed': failed_checks,
+                'total': total_checks
+            }
+
+            # 3. Construct "Checks" List & Sorting
+            # Severity Map for sorting
+            severity_map = {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3}
+            
+            # Build list of wrapper objects/dicts to match template expectations
+            # Template expects: check.rule_id, check.title, check.status, check.severity, check.description, check.evidence
+            # Sorting: Critical -> High -> Med -> Low -> Pass
+            # Interpretation: Failed items sorted by severity, then Passed items.
+            
+            checks = []
+            for ev in evidence_qs:
+                check_data = {
+                    'rule_id': ev.question.key,
+                    'title': ev.question.title,
+                    'description': ev.question.description,
+                    'severity': ev.question.severity,
+                    'status': ev.status,
+                    'evidence': ev, # Direct model access for screenshot, status_state
+                }
+                checks.append(check_data)
+                
+            def sort_key(c):
+                # Primary sort: Status (Fail=0, Pass=1)
+                status_order = 1 if c['status'] == 'PASS' else 0
+                # Secondary sort: Severity index
+                sev_index = severity_map.get(c['severity'], 4)
+                return (status_order, sev_index)
+
+            checks_sorted = sorted(checks, key=sort_key)
+
+            # 4. Pie Chart (Matplotlib)
+            pie_chart_base64 = None
+            if passed_checks + failed_checks > 0:
+                plt.figure(figsize=(6, 6))
+                labels = ['Pass', 'Fail']
+                sizes = [passed_checks, failed_checks]
+                colors = ['#2e7d32', '#c62828'] # Green, Red
+                
+                plt.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
+                plt.axis('equal')
+                
+                buffer = io.BytesIO()
+                plt.savefig(buffer, format='png', bbox_inches='tight')
+                buffer.seek(0)
+                pie_chart_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+                plt.close()
+
+            # 5. Render HTML
+            context = {
+                'audit': audit,
+                'score': score,
+                'stats': stats,
+                'checks': checks_sorted, # Renamed from evidence_list to checks
+                'pie_chart': pie_chart_base64,
+            }
+            
+            html_string = render_to_string('reports/audit_report.html', context)
+            
+            # 6. Generate PDF
+            pdf_file = HTML(string=html_string, base_url=request.build_absolute_uri()).write_pdf()
+            
+            response = HttpResponse(pdf_file, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="Audit_Report_{audit.id}.pdf"'
+            return response
+
+        except Exception as e:
+            logger.error(f"WeasyPrint PDF Generation Failed: {e}", exc_info=True)
+            return Response(
+                {"error": "Failed to generate professional report"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

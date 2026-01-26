@@ -1,9 +1,17 @@
 from django.db import models
-
-# Create your models here.
-from django.db import models
 from django.conf import settings
 import uuid
+import os
+from datetime import datetime
+
+def evidence_upload_path(instance, filename):
+    # audit_{audit_id}_rule_{rule_code}_{timestamp}.png
+    ext = filename.split('.')[-1]
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    new_filename = f"audit_{instance.audit.id}_rule_{instance.question.key}_{timestamp}.{ext}"
+    # Use formatted date directories to keep things organized
+    date_path = datetime.now().strftime('%Y/%m')
+    return os.path.join(f'audit_proofs/{date_path}/', new_filename)
 
 class Question(models.Model):
     SEVERITY_CHOICES = [
@@ -50,6 +58,7 @@ class Audit(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     score = models.IntegerField(default=0, help_text="Audit compliance score (0-100)")
+    score_value = models.IntegerField(default=0, help_text="Audit compliance score value")
 
     class Meta:
         # Ensure organization isolation: Company A's audits can't be accessed by Company B
@@ -82,9 +91,17 @@ class Evidence(models.Model):
         null=True,
         help_text="Human-readable summary of the finding"
     )
+    STATUS_STATE_CHOICES = [
+        ('OPEN', 'Open'),
+        ('FIXED', 'Fixed'),
+        ('RISK_ACCEPTED', 'Risk Accepted'),
+    ]
+
     # NEW FIELDS FOR INDUSTRY STANDARD PROOFS
-    screenshot = models.ImageField(upload_to='audit_proofs/%Y/%m/', null=True, blank=True)
+    screenshot = models.ImageField(upload_to=evidence_upload_path, null=True, blank=True)
     remediation_steps = models.TextField(null=True, blank=True)
+    remediation_status = models.CharField(max_length=20, default='OPEN') # Deprecated, use status_state
+    status_state = models.CharField(max_length=20, choices=STATUS_STATE_CHOICES, default='OPEN')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
