@@ -21,8 +21,9 @@ from .views import (
     EvidenceUploadView,
     EvidenceMilestoneView,
     SessionFinalizeView,
+    EvidenceScreenshotUploadView,
 )
-from .views_export import AuditExportCSVView, ExportAuditReportView, AuditExportPDFView
+from .views_export import AuditExportCSVView, ExportAuditReportView, AuditExportPDFView, AuditExportPreviewView
 app_name = 'audits'
 
 urlpatterns = [
@@ -44,6 +45,7 @@ urlpatterns = [
     path('<uuid:audit_id>/export/csv/', AuditExportCSVView.as_view(), name='audit-export-csv'),
     path('<uuid:audit_id>/export/xlsx/', ExportAuditReportView.as_view(), name='audit-export-xlsx'),
     path('<uuid:audit_id>/export/pdf/', AuditExportPDFView.as_view(), name='audit-export-pdf'),
+    path('<uuid:audit_id>/export/preview/', AuditExportPreviewView.as_view(), name='audit-export-preview'),
     
     # Executive dashboard summary with aggregated stats
     path('dashboard/summary/', DashboardSummaryView.as_view(), name='dashboard-summary'),
@@ -58,5 +60,6 @@ urlpatterns = [
     path('evidence/upload/', EvidenceUploadView.as_view(), name='evidence-upload'),
     path('evidence/milestone/', EvidenceMilestoneView.as_view(), name='evidence-milestone'),
     path('session/<uuid:pk>/finalize/', SessionFinalizeView.as_view(), name='session-finalize'),
+    path('evidence/<int:pk>/upload_screenshot/', EvidenceScreenshotUploadView.as_view(), name='evidence-upload-screenshot'),
 
 ]

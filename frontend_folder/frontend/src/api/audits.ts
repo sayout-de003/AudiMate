@@ -72,6 +72,11 @@ export const auditsApi = {
         return response.data;
     },
 
+    exportPreview: async (id: string) => {
+        const response = await api.get(`/audits/${id}/export/preview/`, { responseType: 'blob' });
+        return response.data;
+    },
+
     uploadEvidence: async (auditId: string, file: File) => {
         const formData = new FormData();
         formData.append('file', file);
@@ -86,9 +91,7 @@ export const auditsApi = {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('evidence_id', evidenceId.toString());
-        const { data } = await api.post(`/audits/evidence/${evidenceId}/upload_screenshot/`, formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
-        });
+        const { data } = await api.post(`/audits/evidence/${evidenceId}/upload_screenshot/`, formData);
         return data;
     },
 

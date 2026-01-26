@@ -22,17 +22,14 @@ from rest_framework.views import APIView
 from apps.audits.models import Audit, Evidence
 from apps.organizations.permissions import IsSameOrganization, HasActiveSubscription
 
-# ReportLab Imports
+# WeasyPrint Imports
 try:
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import letter
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    import weasyprint
 except ImportError:
     pass
 
-# OpenPyXL Imports
+import json
+from django.template.loader import render_to_string
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.chart import PieChart, PieChart3D, Reference
@@ -139,14 +136,94 @@ class AuditExportCSVView(APIView):
 
 class AuditExportPDFView(APIView):
     """
-    Export Audit Results as PDF.
-    Generates a professional, industry-standard audit report.
+    Export Audit Results as PDF using WeasyPrint.
+    Industry-standard design with deduplicated findings.
     """
     permission_classes = [IsAuthenticated, IsSameOrganization]
 
+    def _get_report_context(self, audit):
+        """
+        Shared context generation for PDF and HTML Preview.
+        """
+        # Prepare stats
+        from apps.audits.services.stats_service import AuditStatsService
+        stats = AuditStatsService.calculate_audit_stats(audit)
+
+        # Fetch all evidence
+        evidence_qs = Evidence.objects.filter(audit=audit).select_related('question').order_by('question__severity', 'question__key')
+
+        # Grouping Logic
+        grouped_checks = {}
+        for ev in evidence_qs:
+            rule_key = ev.question.key
+            if rule_key not in grouped_checks:
+                grouped_checks[rule_key] = {
+                    'rule_id': ev.question.key, 
+                    'title': ev.question.title,
+                    'description': ev.question.description,
+                    'severity': ev.question.severity,
+                    'status': 'PASS', # Assume pass until failure found
+                    'findings': [],
+                    'passed_count': 0  # Track passed resources count
+                }
+            
+            check = grouped_checks[rule_key]
+            
+            # Check status aggregation
+            if ev.status == 'FAIL':
+                check['status'] = 'FAIL'
+            elif ev.status == 'ERROR' and check['status'] != 'FAIL':
+                check['status'] = 'ERROR'
+            
+            # Extract resource name
+            raw = ev.raw_data
+            resource = "N/A"
+            if isinstance(raw, dict):
+                resource = raw.get('repo_name') or raw.get('org_name') or raw.get('name') or "N/A"
+            
+            # Serialize JSON for display
+            json_log = json.dumps(raw, indent=2, default=str) if raw else None
+            
+            check['findings'].append({
+                'resource': resource,
+                'status': ev.status,
+                'screenshot': ev.screenshot,
+                'raw_data': raw,
+                'json_log': json_log,
+                'comment': ev.comment,
+                'remediation': ev.remediation_steps
+            })
+
+            # Count passed resources
+            # In a real scenario, we might want to know how many were scanned effectively.
+            # If the check is PASS, usually it means all scanned resources passed. 
+            # If we have granular findings for each passed resource, we count them.
+            # Otherwise, we might default to 1 if it's a singleton check.
+            # Here we just count the evidence items.
+            if ev.status == 'PASS':
+                check['passed_count'] += 1
+
+        # Convert to list
+        checks_list = list(grouped_checks.values())
+        
+        # Sort: FAIL first, then by Severity
+        severity_map = {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3}
+        checks_list.sort(key=lambda x: (
+            0 if x['status'] == 'FAIL' else 1,
+            severity_map.get(x['severity'], 4)
+        ))
+
+        return {
+            'audit': audit,
+            'stats': stats,
+            'checks': checks_list,
+            'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M'),
+        }
+
     def get(self, request, audit_id):
         try:
-            audit = get_object_or_404(Audit, id=audit_id)
+            # Optimize query to include organization for template rendering
+            audit = get_object_or_404(Audit.objects.select_related('organization'), id=audit_id)
             self.check_object_permissions(request, audit)
 
             if audit.organization.subscription_status != 'active':
@@ -155,124 +232,49 @@ class AuditExportPDFView(APIView):
                     status=status.HTTP_403_FORBIDDEN
                 )
 
-            # Prepare Data
-            from apps.audits.services.stats_service import AuditStatsService
-            stats = AuditStatsService.calculate_audit_stats(audit)
+            context = self._get_report_context(audit)
+
+            # Generate PDF
+            html_string = render_to_string('reports/audit_report_fixed.html', context)
             
-            # Create PDF Buffer
-            buffer = io.BytesIO()
-            doc = SimpleDocTemplate(
-                buffer,
-                pagesize=letter,
-                rightMargin=40, leftMargin=40,
-                topMargin=40, bottomMargin=40
-            )
+            # Use base_url for loading static files/images locally if needed
+            # For file:// paths in src, WeasyPrint usually handles them if absolute.
+            pdf_file = weasyprint.HTML(string=html_string, base_url=request.build_absolute_uri('/')).write_pdf()
 
-            # Styles
-            styles = getSampleStyleSheet()
-            title_style = styles['Heading1']
-            title_style.alignment = TA_CENTER
-            
-            normal_center = ParagraphStyle('NormalCenter', parent=styles['Normal'], alignment=TA_CENTER)
-            
-            elements = []
+            response = HttpResponse(pdf_file, content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="Audit_Report_{audit_id}.pdf"'
+            return response
 
-            # --- HEADER ---
-            elements.append(Paragraph("AuditEase Security Report", title_style))
-            elements.append(Spacer(1, 10))
-            elements.append(Paragraph(f"Audit ID: {audit.id}", normal_center))
-            elements.append(Paragraph(f"Date: {audit.created_at.strftime('%Y-%m-%d')}", normal_center))
-            elements.append(Paragraph(f"Organization: {audit.organization.name}", normal_center))
-            elements.append(Spacer(1, 20))
-
-            # --- EXECUTIVE SUMMARY ---
-            elements.append(Paragraph("Executive Summary", styles['Heading2']))
-            elements.append(Spacer(1, 10))
-
-            summary_data = [
-                ['Metric', 'Value'],
-                ['Total Checks', str(stats['total_findings'])],
-                ['Failures', str(stats['failed_count'])],
-                ['Passed', str(stats['passed_count'])],
-                ['Compliance Score', f"{stats['pass_rate_percentage']:.1f}%"]
-            ]
-
-            summary_table = Table(summary_data, colWidths=[200, 100])
-            summary_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (1, 0), colors.HexColor('#003366')),
-                ('TEXTCOLOR', (0, 0), (1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ]))
-            elements.append(summary_table)
-            elements.append(Spacer(1, 25))
-
-            # --- DETAILED FINDINGS ---
-            elements.append(Paragraph("Detailed Findings (Failures Only)", styles['Heading2']))
-            elements.append(Spacer(1, 10))
-
-            # Filter for Failures only
-            evidence_failures = Evidence.objects.filter(audit=audit, status='FAIL').select_related('question')
-
-            if not evidence_failures.exists():
-                elements.append(Paragraph("Great job! No failures were detected in this audit.", styles['Normal']))
-            else:
-                findings_data = [['Severity', 'Control', 'Resource', 'Remediation']]
-                
-                for ev in evidence_failures:
-                    # Severity
-                    sev_text = ev.question.severity
-                    
-                    # Resource extraction
-                    raw = ev.raw_data
-                    resource = "N/A"
-                    if isinstance(raw, dict):
-                        resource = raw.get('repo_name') or raw.get('org_name') or "N/A"
-                    
-                    # Remediation (Truncated if too long for table)
-                    comment = ev.comment or "No details"
-                    remediation = Paragraph(comment[:400] + "..." if len(comment)>400 else comment, styles['Normal'])
-                    
-                    findings_data.append([sev_text, ev.question.key, resource, remediation])
-
-                # Create Table
-                # Adjust column widths to fit page
-                t = Table(findings_data, colWidths=[50, 80, 120, 280])
-                t.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#CCCCCC')),
-                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, 0), (-1, -1), 8),
-                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                    ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ]))
-                
-                elements.append(t)
-
-            # --- FOOTER ---
-            elements.append(Spacer(1, 40))
-            elements.append(Paragraph("Generated by AuditEase - Confidential", normal_center))
-
-            # Build PDF
-            doc.build(elements)
-            
-            buffer.seek(0)
-            return FileResponse(
-                buffer, 
-                as_attachment=True, 
-                filename=f'Audit_Report_{audit_id}.pdf',
-                content_type='application/pdf'
-            )
-            
-        except Audit.DoesNotExist:
-             return Response({"error": "Audit not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            logger.error(f"PDF Export Error: {e}")
+            logger.exception(f"PDF Export Error: {e}")
             return Response({"error": "Failed to generate PDF"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class AuditExportPreviewView(AuditExportPDFView):
+    """
+    Render Audit Report as HTML for preview.
+    """
+    def get(self, request, audit_id):
+        try:
+            audit = get_object_or_404(Audit.objects.select_related('organization'), id=audit_id)
+            self.check_object_permissions(request, audit)
+
+            # NOTE: We allow preview even if not subscribed? 
+            # Spec doesn't say, but usually preview is fine or same restriction.
+            # Let's keep consistency with PDF view for now.
+            if audit.organization.subscription_status != 'active':
+                 return Response(
+                    {"error": "Subscribe to view report"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            context = self._get_report_context(audit)
+            content = render_to_string('reports/audit_report_fixed.html', context)
+            return HttpResponse(content)
+            
+        except Exception as e:
+            logger.exception(f"Report Preview Error: {e}")
+            return Response({"error": "Failed to generate preview"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ExportAuditReportView(APIView):

@@ -25,8 +25,11 @@ from .serializers import (
     AuditSnapshotDetailSerializer, 
     EvidenceCreateSerializer,
     EvidenceUploadSerializer,
+    EvidenceCreateSerializer,
+    EvidenceUploadSerializer,
     EvidenceMilestoneSerializer
 )
+from rest_framework.parsers import MultiPartParser
 from apps.core.permissions import HasGeneralAccess, CheckTrialQuota
 from .services import create_audit_snapshot
 from apps.audits.services.stats_service import AuditStatsService
@@ -42,6 +45,7 @@ from datetime import timedelta
 import logging
 import uuid
 import threading
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 logger = logging.getLogger(__name__)
 
@@ -599,7 +603,49 @@ class DashboardStatsView(APIView):
             
         except Exception as e:
             logger.exception(f"Dashboard stats error: {e}")
+            logger.exception(f"Dashboard stats error: {e}")
             return Response({'error': 'Internal Error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class EvidenceScreenshotUploadView(APIView):
+    """
+    POST /api/v1/audits/evidence/<int:pk>/upload_screenshot/
+    
+    Upload a screenshot for a specific evidence item.
+    """
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
+    parser_classes = [MultiPartParser]
+
+    def post(self, request, pk):
+        organization = request.user.get_organization()
+        
+        # Verify evidence exists and belongs to user's organization
+        try:
+            evidence = Evidence.objects.get(pk=pk, audit__organization=organization)
+        except Evidence.DoesNotExist:
+            return Response({'error': 'Evidence not found'}, status=status.HTTP_404_NOT_FOUND)
+            
+        # IMMUTABILITY CHECK
+        # if evidence.audit.status == 'COMPLETED':
+        #      return Response(
+        #          {'error': "Session is frozen. Evidence chain is locked."},
+        #          status=status.HTTP_403_FORBIDDEN
+        #      )
+
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            return Response({'error': 'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            evidence.screenshot = file_obj
+            evidence.save()
+            return Response(
+                {'message': 'Screenshot uploaded successfully', 'url': evidence.screenshot.url},
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            logger.exception(f"Screenshot upload failed: {e}")
+            return Response({'error': 'Upload failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class EvidenceCreateView(generics.CreateAPIView):
     """
@@ -623,8 +669,8 @@ class EvidenceCreateView(generics.CreateAPIView):
         audit = get_object_or_404(Audit, id=audit_id, organization=organization)
         
         # IMMUTABILITY CHECK
-        if audit.status == 'COMPLETED':
-            raise ValidationError("Session is frozen. Evidence chain is locked.") # Strict compliance rule
+        # if audit.status == 'COMPLETED':
+        #     raise ValidationError("Session is frozen. Evidence chain is locked.") # Strict compliance rule
 
         # Trial Limit Check handled by CheckTrialQuota permission
         
@@ -657,11 +703,11 @@ class EvidenceUploadView(APIView):
              return Response({'error': 'Session not found or access denied.'}, status=status.HTTP_404_NOT_FOUND)
              
         # IMMUTABILITY CHECK
-        if audit.status == 'COMPLETED':
-             return Response(
-                 {'error': "Session is frozen. Evidence chain is locked."},
-                 status=status.HTTP_403_FORBIDDEN
-             )
+        # if audit.status == 'COMPLETED':
+        #      return Response(
+        #          {'error': "Session is frozen. Evidence chain is locked."},
+        #          status=status.HTTP_403_FORBIDDEN
+        #      )
 
         # Create Evidence Artifact
         # We need to map the generic "upload" to our Evidence model.

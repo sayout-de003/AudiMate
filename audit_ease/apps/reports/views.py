@@ -37,88 +37,81 @@ class AuditReportPDFView(APIView):
         force = request.query_params.get('force', 'false').lower() == 'true'
         html_mode = request.query_params.get('format', '').lower() == 'html'
 
-        # Check if report already exists and we are not forcing or in html mode
-        if hasattr(audit, 'report') and not force and not html_mode:
-             # Return existing file (simple serving)
-             try:
-                 response = HttpResponse(audit.report.file.read(), content_type='application/pdf')
-                 filename = f"Audit_Report_{audit.id}.pdf"
-                 response['Content-Disposition'] = f'attachment; filename="{filename}"'
-                 return response
-             except Exception:
-                 # If file is missing, fall through to regenerate
-                 pass
+        # --- DATA PREPARATION (Match logic from AuditExportPDFView) ---
+        
+        # 1. Stats
+        from apps.audits.services.stats_service import AuditStatsService
+        stats = AuditStatsService.calculate_audit_stats(audit)
 
-        # --- DATA PREPARATION (Match logic from AuditViewSet) ---
-        
-        # 1. Scoring
-        score = calculate_audit_score(audit)
-        audit.score_value = score
-        audit.save(update_fields=['score_value'])
+        # 2. Fetch all evidence
+        evidence_qs = Evidence.objects.filter(audit=audit).select_related('question').order_by('question__severity', 'question__key')
 
-        # 2. Stats
-        evidence_qs = Evidence.objects.filter(audit=audit).select_related('question')
+        # 3. Grouping Logic
+        import json
+        from datetime import datetime
         
-        passed_checks = evidence_qs.filter(status='PASS').count()
-        failed_checks = evidence_qs.filter(status='FAIL').count()
-        critical_fails = evidence_qs.filter(status='FAIL', question__severity='CRITICAL').count()
-        high_fails = evidence_qs.filter(status='FAIL', question__severity='HIGH').count()
-        
-        stats = {
-            'passing': passed_checks,
-            'critical': critical_fails,
-            'high': high_fails,
-            'failed': failed_checks,
-            'total': evidence_qs.count()
-        }
-
-        # 3. Construct "Checks" List & Sorting
-        severity_map = {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3}
-        
-        checks = []
+        grouped_checks = {}
         for ev in evidence_qs:
-            checks.append({
-                'rule_id': ev.question.key,
-                'title': ev.question.title,
-                'description': ev.question.description,
-                'severity': ev.question.severity,
-                'status': ev.status,
-                'evidence': ev,
-            })
+            rule_key = ev.question.key
+            if rule_key not in grouped_checks:
+                grouped_checks[rule_key] = {
+                    'rule_id': ev.question.key, 
+                    'title': ev.question.title,
+                    'description': ev.question.description,
+                    'severity': ev.question.severity,
+                    'status': 'PASS', # Assume pass until failure found
+                    'findings': [],
+                    'passed_count': 0
+                }
             
-        def sort_key(c):
-             # Failures first, then by severity
-            status_order = 1 if c['status'] == 'PASS' else 0
-            sev_index = severity_map.get(c['severity'], 4)
-            return (status_order, sev_index)
+            check = grouped_checks[rule_key]
+            
+            # Check status aggregation
+            if ev.status == 'FAIL':
+                check['status'] = 'FAIL'
+            elif ev.status == 'ERROR' and check['status'] != 'FAIL':
+                check['status'] = 'ERROR'
+            
+            # Extract resource name
+            raw = ev.raw_data
+            resource = "N/A"
+            if isinstance(raw, dict):
+                resource = raw.get('repo_name') or raw.get('org_name') or raw.get('name') or "N/A"
+            
+            # Serialize JSON for display
+            json_log = json.dumps(raw, indent=2, default=str) if raw else None
+            
+            check['findings'].append({
+                'resource': resource,
+                'status': ev.status,
+                'screenshot': ev.screenshot,
+                'raw_data': raw,
+                'json_log': json_log,
+                'comment': ev.comment,
+                'remediation': ev.remediation_steps
+            })
 
-        checks_sorted = sorted(checks, key=sort_key)
+            if ev.status == 'PASS':
+                check['passed_count'] += 1
 
-        # 4. Pie Chart
-        pie_chart_base64 = None
-        if passed_checks + failed_checks > 0:
-            plt.figure(figsize=(6, 6))
-            labels = ['Pass', 'Fail']
-            sizes = [passed_checks, failed_checks]
-            colors = ['#2e7d32', '#c62828'] 
-            plt.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
-            plt.axis('equal')
-            buffer = io.BytesIO()
-            plt.savefig(buffer, format='png', bbox_inches='tight')
-            buffer.seek(0)
-            pie_chart_base64 = base64.b64encode(buffer.read()).decode('utf-8')
-            plt.close()
+        # 4. Convert to list & Sort
+        checks_list = list(grouped_checks.values())
+        severity_map = {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3}
+        checks_list.sort(key=lambda x: (
+            0 if x['status'] == 'FAIL' else 1,
+            severity_map.get(x['severity'], 4)
+        ))
 
         # 5. Render
         context = {
             'audit': audit,
-            'score': score,
             'stats': stats,
-            'checks': checks_sorted,
-            'pie_chart': pie_chart_base64,
+            'checks': checks_list,
+            'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M'),
         }
         
-        html_string = render_to_string('reports/audit_report.html', context)
+        # USE THE FIXED TEMPLATE
+        html_string = render_to_string('reports/audit_report_fixed.html', context)
 
         if html_mode:
             return HttpResponse(html_string, content_type='text/html')
@@ -130,9 +123,6 @@ class AuditReportPDFView(APIView):
             pdf_file = io.BytesIO()
             HTML(string=html_string, base_url=request.build_absolute_uri()).write_pdf(target=pdf_file)
             pdf_bytes = pdf_file.getvalue()
-            
-            # Save the report model if needed... (Skipping strictly for response speed, or could save here)
-            # Keeping it simple: return the PDF
             
         except Exception as e:
             return HttpResponse(f"Error generating PDF: {str(e)}", status=500)

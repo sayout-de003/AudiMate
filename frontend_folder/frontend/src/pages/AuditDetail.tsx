@@ -115,9 +115,17 @@ export function AuditDetail() {
                         <Download className="mr-2 h-4 w-4" />
                         Excel
                     </Button>
+                    <Button variant="outline" size="sm" onClick={async () => {
+                        const blob = await auditsApi.exportPreview(id!);
+                        const url = window.URL.createObjectURL(blob);
+                        window.open(url, '_blank');
+                    }}>
+                        <FileText className="mr-2 h-4 w-4" />
+                        Preview
+                    </Button>
                     <Button variant="outline" size="sm" onClick={handleGeneratePDF}>
                         <FileText className="mr-2 h-4 w-4" />
-                        PDF Report
+                        Download PDF
                     </Button>
                 </div>
             </div>
