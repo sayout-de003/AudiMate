@@ -14,15 +14,30 @@ class OrganizationAdmin(admin.ModelAdmin):
     search_fields = ('name', 'slug', 'owner__email')
     readonly_fields = ('id', 'slug', 'created_at', 'updated_at')
     
-    fieldsets = (
-        ('Basic Info', {
-            'fields': ('id', 'name', 'slug', 'owner')
-        }),
-        ('Timestamps', {
-            'fields': ('created_at', 'updated_at'),
-            'classes': ('collapse',)
-        }),
-    )
+    def activate_subscription(self, request, queryset):
+        """
+        Manually set selected organizations to ACTIVE subscription.
+        Useful for granting access without payment (e.g., internal use, sales).
+        """
+        from django.utils import timezone
+        updated = queryset.update(
+            subscription_status=Organization.SUBSCRIPTION_STATUS_ACTIVE,
+            subscription_started_at=timezone.now()
+        )
+        self.message_user(request, f'{updated} organizations marked as Active.')
+        activate_subscription.short_description = 'Activate Subscription (Manual Override)'
+
+        actions = ['activate_subscription']
+        
+        fieldsets = (
+            ('Basic Info', {
+                'fields': ('id', 'name', 'slug', 'owner')
+            }),
+            ('Timestamps', {
+                'fields': ('created_at', 'updated_at'),
+                'classes': ('collapse',)
+            }),
+        )
 
     def owner_email(self, obj):
         return obj.owner.email
@@ -138,3 +153,7 @@ class OrganizationInviteAdmin(admin.ModelAdmin):
         updated = pending.update(status=OrganizationInvite.STATUS_EXPIRED)
         self.message_user(request, f'{updated} invitations marked as expired.')
     mark_expired.short_description = 'Mark selected as expired'
+
+
+
+

@@ -58,7 +58,7 @@ class AuditExportCSVView(APIView):
             # 2. Subscription Check
             if audit.organization.subscription_status != 'active':
                 return Response(
-                    {"error": "Upgrade to Premium to export data"},
+                    {"error": "Subscribe to download"},
                     status=status.HTTP_403_FORBIDDEN
                 )
             
@@ -151,7 +151,7 @@ class AuditExportPDFView(APIView):
 
             if audit.organization.subscription_status != 'active':
                 return Response(
-                    {"error": "Upgrade to Premium to export data"},
+                    {"error": "Subscribe to download"},
                     status=status.HTTP_403_FORBIDDEN
                 )
 
@@ -289,7 +289,7 @@ class ExportAuditReportView(APIView):
             
             if audit.organization.subscription_status != 'active':
                 return Response(
-                    {"error": "Upgrade to Premium to export data"},
+                    {"error": "Subscribe to download"},
                     status=status.HTTP_403_FORBIDDEN
                 )
 
