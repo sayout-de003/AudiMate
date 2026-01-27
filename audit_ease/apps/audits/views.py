@@ -16,7 +16,7 @@ from rest_framework import status
 from rest_framework import permissions, generics
 from rest_framework.exceptions import ValidationError
 from apps.organizations.permissions import IsSameOrganization
-from .models import Audit, Evidence, AuditSnapshot, Question
+from .models import Audit, Evidence, AuditSnapshot, Question, ScanHistory, RiskAcceptanceException
 from .serializers import (
     AuditSerializer, 
     EvidenceSerializer, 
@@ -424,6 +424,22 @@ class DashboardSummaryView(APIView):
                 for audit in recent_audits
             ]
             
+            # 7. Scan History (Daily Score Trend)
+            history_qs = ScanHistory.objects.filter(
+                organization=organization,
+                date__gte=thirty_days_ago
+            ).order_by('date')
+            
+            history_data = [
+                {
+                    'date': h.date.date().isoformat(),
+                    'score': h.score,
+                    'total_fail': h.total_fail,
+                    'total_pass': h.total_pass
+                }
+                for h in history_qs
+            ]
+            
             # Compile the dashboard response
             dashboard_data = {
                 'organization': organization.name,
@@ -452,7 +468,8 @@ class DashboardSummaryView(APIView):
                     'total_open_issues': sum(issues_by_severity.values()),
                     'top_failing_checks': top_failing
                 },
-                'recent_audits': recent_timeline
+                'recent_audits': recent_timeline,
+                'history': history_data
             }
             
             return Response(dashboard_data, status=status.HTTP_200_OK)
@@ -818,3 +835,45 @@ class SessionFinalizeView(APIView):
             {'message': f"Session {audit.id} is now FROZEN. No further changes allowed."},
             status=status.HTTP_200_OK
         )
+class RiskAcceptanceCreateView(APIView):
+    """
+    POST /api/v1/audits/risk-accept/
+    
+    Create a risk acceptance exception for a specific check and resource.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
+    
+    def post(self, request):
+        try:
+            organization = request.user.get_organization()
+            if not organization: 
+                return Response({'error': 'No Organization'}, status=400)
+            
+            check_id = request.data.get('check_id')
+            reason = request.data.get('reason')
+            resource_identifier = request.data.get('resource_identifier') # Optional
+            
+            if not check_id or not reason:
+                return Response({'error': 'check_id and reason are required'}, status=400)
+            
+            # Create or Update Exception
+            # Use update_or_create to handle re-acceptance or updates
+            exception, created = RiskAcceptanceException.objects.update_or_create(
+                organization=organization,
+                check_id=check_id,
+                resource_identifier=resource_identifier,
+                defaults={
+                    'reason': reason,
+                    'user': request.user,
+                    'date_accepted': timezone.now()
+                }
+            )
+            
+            return Response({
+                'message': f"Risk accepted for {check_id} on {resource_identifier or 'Global'}",
+                'id': exception.id
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            logger.exception(f"Risk Acceptance Failed: {e}")
+            return Response({'error': str(e)}, status=500)

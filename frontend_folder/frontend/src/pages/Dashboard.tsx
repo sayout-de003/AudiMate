@@ -4,6 +4,7 @@ import { auditsApi } from '../api/audits';
 import { integrationsApi } from '../api/integrations';
 import { Activity, CheckCircle2, AlertTriangle, Shield, Loader2, Github } from 'lucide-react';
 import { Button } from '../components/ui/Button';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export function Dashboard() {
     const navigate = useNavigate();
@@ -106,6 +107,60 @@ export function Dashboard() {
                     iconColor="text-purple-600"
                     bgColor="bg-purple-50 dark:bg-purple-900/20"
                 />
+            </div>
+
+            {/* Compliance Trend Chart */}
+            <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:bg-gray-800 dark:border-gray-700">
+                <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100 mb-6">Compliance Trend (30 Days)</h3>
+                <div className="h-[300px] w-full">
+                    {summary?.history && summary.history.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={summary.history}>
+                                <defs>
+                                    <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3} />
+                                        <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#374151" opacity={0.2} />
+                                <XAxis
+                                    dataKey="date"
+                                    tickFormatter={(str) => new Date(str).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                    stroke="#9ca3af"
+                                    tick={{ fontSize: 12 }}
+                                    tickLine={false}
+                                    axisLine={false}
+                                />
+                                <YAxis
+                                    domain={[0, 100]}
+                                    stroke="#9ca3af"
+                                    tick={{ fontSize: 12 }}
+                                    tickLine={false}
+                                    axisLine={false}
+                                    tickFormatter={(value) => `${value}%`}
+                                />
+                                <Tooltip
+                                    contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#f3f4f6' }}
+                                    itemStyle={{ color: '#e5e7eb' }}
+                                    formatter={(value: number | undefined) => [`${value}%`, 'Score']}
+                                    labelFormatter={(label) => new Date(label).toLocaleDateString()}
+                                />
+                                <Area
+                                    type="monotone"
+                                    dataKey="score"
+                                    stroke="#4f46e5"
+                                    strokeWidth={3}
+                                    fillOpacity={1}
+                                    fill="url(#colorScore)"
+                                />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <div className="flex h-full items-center justify-center text-gray-400">
+                            <p>No history data available yet.</p>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Recent Audits */}

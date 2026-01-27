@@ -22,6 +22,7 @@ from .views import (
     EvidenceMilestoneView,
     SessionFinalizeView,
     EvidenceScreenshotUploadView,
+    RiskAcceptanceCreateView,
 )
 from .views_export import AuditExportCSVView, ExportAuditReportView, AuditExportPDFView, AuditExportPreviewView
 app_name = 'audits'
@@ -62,4 +63,7 @@ urlpatterns = [
     path('session/<uuid:pk>/finalize/', SessionFinalizeView.as_view(), name='session-finalize'),
     path('evidence/<int:pk>/upload_screenshot/', EvidenceScreenshotUploadView.as_view(), name='evidence-upload-screenshot'),
 
+ 
+    # Risk Acceptance
+    path('risk-accept/', RiskAcceptanceCreateView.as_view(), name='risk-accept'),
 ]

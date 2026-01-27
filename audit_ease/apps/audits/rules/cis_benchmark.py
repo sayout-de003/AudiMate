@@ -705,12 +705,22 @@ class ActionsPermissions(BaseRule):
         
         try:
             # Use raw request as PyGithub might not expose this directly
+            # Note: Endpoint might be at Org or Repo level. Here it assumes Org.
             status, headers, data = org._requester.requestJson(
                 "GET", 
                 f"/orgs/{org.login}/actions/permissions"
             )
             
-            default_perm = data.get("default_workflow_permissions")
+            default_perm = "unknown"
+            if isinstance(data, dict):
+                default_perm = data.get("default_workflow_permissions", "unknown")
+            elif hasattr(data, "default_workflow_permissions"):
+                default_perm = data.default_workflow_permissions
+            else:
+                try:
+                    default_perm = data.default_workflow_permissions
+                except: pass
+
             evidence_data = {
                 "org_name": org.login,
                 "default_workflow_permissions": default_perm,

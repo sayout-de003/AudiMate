@@ -19,7 +19,7 @@ export interface Question {
 export interface Evidence {
     id: number;
     question: Question;
-    status: 'PASS' | 'FAIL' | 'ERROR';
+    status: 'PASS' | 'FAIL' | 'ERROR' | 'RISK_ACCEPTED';
     raw_data: any;
     comment?: string;
     created_at: string;
@@ -102,6 +102,15 @@ export const auditsApi = {
 
     createSnapshot: async (auditId: string) => {
         const { data } = await api.post(`/audits/${auditId}/snapshots/create/`);
+        return data;
+    },
+
+    acceptRisk: async (checkId: string, reason: string, resourceIdentifier?: string) => {
+        const { data } = await api.post('/audits/risk-accept/', {
+            check_id: checkId,
+            reason,
+            resource_identifier: resourceIdentifier
+        });
         return data;
     }
 };

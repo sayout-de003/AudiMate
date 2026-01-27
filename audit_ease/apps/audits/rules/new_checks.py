@@ -12,7 +12,13 @@ def check_org_2fa(org):
     
     try:
         # Check if 2FA is required
-        if org.two_factor_requirement_enabled:
+        # Note: two_factor_requirement_enabled is a boolean on the Org object
+        # We handle attribute verification to be safe
+        mfa_enabled = False
+        if hasattr(org, 'two_factor_requirement_enabled'):
+            mfa_enabled = org.two_factor_requirement_enabled
+        
+        if mfa_enabled:
             return {
                 "check_id": check_id,
                 "title": title,
@@ -44,41 +50,113 @@ def check_org_2fa(org):
             "system_logs": {"error": str(e)}
         }
 
+# def check_actions_permissions(repo):
+#     """
+#     Check if 'Default Workflow Permissions' are Read-Only.
+#     Note: This is strictly an Actions setting, usually at Org level or Repo level.
+#     The prompt asks for this per repo, but often it's inherited. 
+#     PyGithub `repo.get_workflow_permissions()`? No, it might not exist in older PyGithub.
+#     We might need to try/except or look for it.
+#     If it's missing, we skip or fail safe.
+#     """
+#     check_id = "actions_permissions"
+#     title = "Restrict Default Workflow Permissions"
+    
+#     try:
+#         # Attempt to get actions permissions
+#         # Note: repo.get_workflow_permissions() might not be available in all PyGithub versions
+#         # fallback to manual request if needed, but let's try standard attribute first if it exists
+#         # or just assume specific API endpoint.
+        
+#         # Valid values: 'read', 'write', 'none'
+#         # PASS if 'read' or 'none'. FAIL if 'write'.
+        
+#         # Using a raw request because PyGithub support varies
+#         status, headers, data = repo._requester.requestJson(
+#             "GET", 
+#             f"{repo.url}/actions/permissions"
+#         )
+        
+#         default_perm = "unknown"
+        
+#         # Robustly handle response type (Dict or Object)
+#         if isinstance(data, dict):
+#             default_perm = data.get("default_workflow_permissions", "unknown")
+#         elif hasattr(data, "default_workflow_permissions"):
+#             default_perm = data.default_workflow_permissions
+#         else:
+#             # Fallback
+#             try:
+#                 default_perm = data.default_workflow_permissions
+#             except:
+#                 pass
+        
+#         if default_perm in ["read", "none"]:
+#              return {
+#                 "check_id": check_id,
+#                 "title": title,
+#                 "status": "PASS",
+#                 "severity": "MEDIUM",
+#                 "issue": f"Default permissions are restricted ({default_perm}).",
+#                 "remediation": "",
+#                 "system_logs": {"repo": repo.full_name, "permission": default_perm}
+#             }
+        
+#         if default_perm == "unknown":
+#              # Debugging helper
+#              keys_found = list(data.keys()) if isinstance(data, dict) else dir(data)
+#              return {
+#                 "check_id": check_id,
+#                 "title": title,
+#                 "status": "FAIL",
+#                 "severity": "MEDIUM",
+#                 "issue": f"Could not determine permissions. Keys found: {keys_found}",
+#                 "remediation": "Check token scopes (needs 'workflow' or admin access).",
+#                 "system_logs": {"repo": repo.full_name, "data_keys": str(keys_found)}
+#             }
+
+#         return {
+#             "check_id": check_id,
+#             "title": title,
+#             "status": "FAIL",
+#             "severity": "MEDIUM",
+#             "issue": f"Default permissions are too permissive ({default_perm}).",
+#             "remediation": "Set Default Workflow Permissions to 'Read repository contents' in Settings > Actions.",
+#             "system_logs": {"repo": repo.full_name, "permission": default_perm}
+#         }
+            
+#     except Exception as e:
+#         # 404 means Actions might be disabled or no access
+#         return {
+#             "check_id": check_id,
+#             "title": title,
+#             "status": "PASS", # Fail safe if we can't check, or "WARN"
+#             "severity": "MEDIUM",
+#             "issue": "Could not verify permissions (Access Denied or Actions Disabled).",
+#             "remediation": "Manually verify Actions permissions.",
+#             "system_logs": {"error": str(e)}
+#         }
+
+
+
 def check_actions_permissions(repo):
     """
     Check if 'Default Workflow Permissions' are Read-Only.
-    Note: This is strictly an Actions setting, usually at Org level or Repo level.
-    The prompt asks for this per repo, but often it's inherited. 
-    PyGithub `repo.get_workflow_permissions()`? No, it might not exist in older PyGithub.
-    We might need to try/except or look for it.
-    If it's missing, we skip or fail safe.
     """
     check_id = "actions_permissions"
     title = "Restrict Default Workflow Permissions"
     
     try:
-        # Attempt to get actions permissions
-        # Note: repo.get_workflow_permissions() might not be available in all PyGithub versions
-        # fallback to manual request if needed, but let's try standard attribute first if it exists
-        # or just assume specific API endpoint.
+        # 1. Use the standard PyGithub method (Handles parsing automatically)
+        # Requires 'workflow' scope in your token.
+        workflow_perms = repo.get_workflow_permissions()
         
-        # Valid values: 'read', 'write', 'none'
-        # PASS if 'read' or 'none'. FAIL if 'write'.
+        # 2. Extract the permission level
+        # The object attribute is 'default_workflow_permissions'
+        # Convert to string to be safe (e.g., "read", "write")
+        default_perm = str(workflow_perms.default_workflow_permissions)
         
-        # Using a raw request because PyGithub support varies
-        status, headers, data = repo._requester.requestJson(
-            "GET", 
-            f"{repo.url}/actions/permissions"
-        )
-        
-        default_perm = "unknown"
-        
-        # Robustly handle response type (Dict or Object)
-        if isinstance(data, dict):
-            default_perm = data.get("default_workflow_permissions", "unknown")
-        elif hasattr(data, "default_workflow_permissions"):
-            default_perm = data.default_workflow_permissions
-        
+        # 3. Validation Logic
         if default_perm in ["read", "none"]:
              return {
                 "check_id": check_id,
@@ -101,14 +179,15 @@ def check_actions_permissions(repo):
             }
             
     except Exception as e:
-        # 404 means Actions might be disabled or no access
+        # If this fails, it is usually because the Token lacks 'workflow' scope
+        # or the repo has Actions disabled entirely.
         return {
             "check_id": check_id,
             "title": title,
-            "status": "PASS", # Fail safe if we can't check, or "WARN"
+            "status": "FAIL", 
             "severity": "MEDIUM",
-            "issue": "Could not verify permissions (Access Denied or Actions Disabled).",
-            "remediation": "Manually verify Actions permissions.",
+            "issue": "Could not verify permissions (Token Scope Error or Actions Disabled).",
+            "remediation": "Ensure Token has 'workflow' scope.",
             "system_logs": {"error": str(e)}
         }
 

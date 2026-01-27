@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { type Evidence, auditsApi } from '../api/audits';
 import { cn } from '../lib/utils';
 import { Camera, Code, AlertTriangle, CheckCircle, Info, Upload, RefreshCw } from 'lucide-react';
+import { RiskAcceptanceModal } from './RiskAcceptanceModal';
 
 interface EvidenceRowProps {
     evidence: Evidence;
@@ -11,6 +12,7 @@ export function EvidenceRow({ evidence: initialEvidence }: EvidenceRowProps) {
     const [evidence, setEvidence] = useState(initialEvidence);
     const [expanded, setExpanded] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
+    const [showRiskModal, setShowRiskModal] = useState(false);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -160,7 +162,29 @@ export function EvidenceRow({ evidence: initialEvidence }: EvidenceRowProps) {
                         </div>
                     )}
 
-                    {/* D. Comment */}
+                    {/* D. Risk Acceptance (New) */}
+                    {(evidence.status === 'FAIL') && (
+                        <div className="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4 flex justify-end">
+                            <RiskAcceptanceModal
+                                isOpen={showRiskModal}
+                                onClose={() => setShowRiskModal(false)}
+                                checkId={evidence.question.key}
+                                resourceId={evidence.raw_data?.repo_name || undefined}
+                                onSuccess={() => {
+                                    setEvidence(prev => ({ ...prev, status: 'RISK_ACCEPTED', comment: (prev.comment || '') + ' [RISK ACCEPTED]' }));
+                                }}
+                            />
+                            <button
+                                onClick={() => setShowRiskModal(true)}
+                                className="text-sm text-yellow-600 dark:text-yellow-500 hover:text-yellow-700 dark:hover:text-yellow-400 font-medium flex items-center gap-1"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-shield-alert"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="M12 8v4" /><path d="M12 16h.01" /></svg>
+                                Accept Risk / Waive
+                            </button>
+                        </div>
+                    )}
+
+                    {/* E. Comment */}
                     {evidence.comment && (
                         <div className="mt-4 text-sm text-gray-600 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-4">
                             <span className="font-semibold">Note:</span> {evidence.comment}

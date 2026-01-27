@@ -149,3 +149,55 @@ class AuditSnapshot(models.Model):
 
     def __str__(self):
         return f"Snapshot {self.version}: {self.name} ({self.audit.id})"
+class ScanHistory(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, help_text="User associated with this scan metric")
+    organization = models.ForeignKey(
+        'organizations.Organization',
+        on_delete=models.CASCADE,
+        related_name='scan_history',
+        help_text="Organization for this history record",
+        null=True, 
+        blank=True
+    )
+    date = models.DateTimeField(auto_now_add=True)
+    score = models.IntegerField(help_text="Daily Posture Score (0-100)")
+    total_fail = models.IntegerField()
+    total_pass = models.IntegerField()
+
+    class Meta:
+        ordering = ['-date']
+        indexes = [
+            models.Index(fields=['organization', 'date']),
+        ]
+
+    def __str__(self):
+        return f"History {self.date.date()} - Score: {self.score}"
+
+class RiskAcceptanceException(models.Model):
+    check_id = models.CharField(max_length=50, help_text="The key of the check to skip/waive (e.g. cis_1_1)")
+    reason = models.TextField(help_text="Justification for why this risk is accepted")
+    date_accepted = models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.SET_NULL, 
+        null=True,
+        help_text="User who accepted the risk"
+    )
+    organization = models.ForeignKey(
+        'organizations.Organization',
+        on_delete=models.CASCADE,
+        related_name='risk_exceptions',
+        help_text="Organization this exception applies to"
+    )
+    resource_identifier = models.CharField(
+        max_length=255, 
+        blank=True, 
+        null=True, 
+        help_text="Specific resource to waive (e.g. repo name). If empty, waives for entire org?"
+    )
+
+    class Meta:
+        unique_together = ('organization', 'check_id', 'resource_identifier')
+
+    def __str__(self):
+        return f"Exception for {self.check_id} on {self.resource_identifier or 'Global'} ({self.organization})"
