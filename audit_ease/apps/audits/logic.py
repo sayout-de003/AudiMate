@@ -24,7 +24,8 @@ from .rules.cis_benchmark import (
     DismissStaleReviews, RequireLinearHistory,
     CodeOwnersExist,
     NoOutsideCollaborators, PreventForcePushes, PreventBranchDeletion,
-    RequireStatusChecks, LicenseFileExists
+    RequireStatusChecks, LicenseFileExists,
+    Org2FA, ActionsPermissions, BranchRulesReviews, RepoWebhooks
 )
 from .rules.access_control import AccessControlRule
 
@@ -76,6 +77,12 @@ COMPLIANCE_CHECK_MAP = {
     'gh_bp_1': 'check_cis_4_2_code_reviews',
     'gh_bp_2': 'check_cis_4_6_status_checks',
     'gh_bp_3': 'check_cis_4_3_dismiss_stale',
+    'gh_bp_3': 'check_cis_4_3_dismiss_stale',
+    # New Refactored Checks
+    'org_2fa': 'check_org_2fa_rule',
+    'actions_perm': 'check_actions_perm',
+    'branch_rules_reviews': 'check_branch_rules_reviews',
+    'repo_hooks': 'check_repo_hooks',
 }
 
 class AuditExecutor:
@@ -628,6 +635,33 @@ class AuditExecutor:
             
         except Exception as e:
             return 'FAIL', {'error': str(e)}, f"Base permission check failed: {e}"
+
+    # REFACTORED NEW CHECKS PLUMBING
+
+    def check_org_2fa_rule(self) -> tuple:
+        client = self._get_pygithub_client()
+        org = self._get_pygithub_org(client)
+        if not org: return 'FAIL', {'error': 'Org not found'}, "Could not resolve Organization"
+        return self._run_rule(Org2FA, lambda: org, "Org 2FA Check")
+
+    def check_actions_perm(self) -> tuple:
+        client = self._get_pygithub_client()
+        org = self._get_pygithub_org(client)
+        if not org: return 'FAIL', {'error': 'Org not found'}, "Could not resolve Organization"
+        return self._run_rule(ActionsPermissions, lambda: org, "Actions Permissions Check")
+
+    def check_branch_rules_reviews(self) -> tuple:
+        client = self._get_pygithub_client()
+        repo = self._get_pygithub_repo(client)
+        if not repo: return 'FAIL', {'error': 'Repo not found'}, "Could not resolve Repository"
+        return self._run_rule(BranchRulesReviews, lambda: repo, "Branch Rules Reviews Check")
+
+    def check_repo_hooks(self) -> tuple:
+        client = self._get_pygithub_client()
+        repo = self._get_pygithub_repo(client)
+        if not repo: return 'FAIL', {'error': 'Repo not found'}, "Could not resolve Repository"
+        return self._run_rule(RepoWebhooks, lambda: repo, "Repo Webhooks Check")
+
 
     # AWS COMPLIANCE CHECK IMPLEMENTATIONS
 

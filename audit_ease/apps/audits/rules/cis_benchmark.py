@@ -647,11 +647,181 @@ class LicenseFileExists(BaseRule):
                 severity="LOW"
             )
 
-ALL_ORG_RULES = [EnforceMFA, StaleAdminAccess, ExcessiveOwners]
+
+
+
+
+
+
+
+
+
+
+# ==========================================
+# GROUP 4: New Compliance Logic (Refactored)
+# ==========================================
+
+class Org2FA(BaseRule):
+    id = "org_2fa"
+    title = "Organization Two-Factor Authentication"
+    risk_level = RiskLevel.CRITICAL
+    compliance_standard = "Recommended"
+
+    def evaluate(self, org) -> RuleResult:
+        settings_url = f"{org.html_url}/settings/security"
+        evidence_data = {
+            "org_name": org.login,
+            "settings_url": settings_url
+        }
+
+        try:
+            if org.two_factor_requirement_enabled:
+                return RuleResult(
+                    True, 
+                    "2FA is enforced.", 
+                    self.compliance_standard, 
+                    raw_data=evidence_data
+                )
+            
+            return RuleResult(
+                False, 
+                "2FA is NOT enforced.", 
+                self.compliance_standard,
+                raw_data=evidence_data,
+                remediation="Enable 'Require two-factor authentication' in Organization Settings > Security.",
+                severity="CRITICAL"
+            )
+        except Exception as e:
+            return RuleResult(False, f"Check failed: {str(e)}", self.compliance_standard, raw_data=evidence_data)
+
+class ActionsPermissions(BaseRule):
+    id = "actions_perm"
+    title = "Restrict Default Workflow Permissions"
+    risk_level = RiskLevel.MEDIUM
+    compliance_standard = "Recommended"
+
+    def evaluate(self, org) -> RuleResult:
+        settings_url = f"{org.html_url}/settings/actions"
+        
+        try:
+            # Use raw request as PyGithub might not expose this directly
+            status, headers, data = org._requester.requestJson(
+                "GET", 
+                f"/orgs/{org.login}/actions/permissions"
+            )
+            
+            default_perm = data.get("default_workflow_permissions")
+            evidence_data = {
+                "org_name": org.login,
+                "default_workflow_permissions": default_perm,
+                "settings_url": settings_url
+            }
+
+            if default_perm in ["read", "none"]:
+                return RuleResult(
+                    True, 
+                    f"Permissions are safe ({default_perm}).", 
+                    self.compliance_standard, 
+                    raw_data=evidence_data
+                )
+            
+            return RuleResult(
+                False, 
+                f"Permissions are unsafe ({default_perm}).", 
+                self.compliance_standard,
+                raw_data=evidence_data,
+                remediation="Set Workflow permissions to 'Read repository contents permission' in Actions Settings.",
+                severity="MEDIUM"
+            )
+        except Exception as e:
+            return RuleResult(False, f"Check failed: {str(e)}", self.compliance_standard, raw_data={"error": str(e)})
+
+class BranchRulesReviews(BaseRule):
+    id = "branch_rules_reviews"
+    title = "Require Approving Reviews"
+    risk_level = RiskLevel.HIGH
+    compliance_standard = "Recommended"
+
+    def evaluate(self, repo) -> RuleResult:
+        settings_url = f"{repo.html_url}/settings/branches"
+        evidence_data = {
+            "repo": repo.full_name,
+            "branch": repo.default_branch,
+            "settings_url": settings_url
+        }
+
+        try:
+            branch = repo.get_branch(repo.default_branch)
+            protection = branch.get_protection()
+            reviews = protection.required_pull_request_reviews
+            
+            if reviews and reviews.required_approving_review_count >= 1:
+                evidence_data['count'] = reviews.required_approving_review_count
+                return RuleResult(
+                    True, 
+                    f"Requires {reviews.required_approving_review_count} reviewers.", 
+                    self.compliance_standard, 
+                    raw_data=evidence_data
+                )
+            
+            return RuleResult(
+                False, 
+                "Does not require approving reviews.", 
+                self.compliance_standard,
+                raw_data=evidence_data,
+                remediation="Update Branch Protection rules to require at least 1 reviewer.",
+                severity="HIGH"
+            )
+        except GithubException:
+             return RuleResult(
+                 False, 
+                 "Branch protection disabled (Reviews not enforced).", 
+                 self.compliance_standard, 
+                 severity="HIGH", 
+                 raw_data=evidence_data,
+                 remediation="Update Branch Protection rules to require at least 1 reviewer."
+             )
+
+class RepoWebhooks(BaseRule):
+    id = "repo_hooks"
+    title = "Audit Insecure Webhooks"
+    risk_level = RiskLevel.MEDIUM
+    compliance_standard = "Recommended"
+
+    def evaluate(self, repo) -> RuleResult:
+        settings_url = f"{repo.html_url}/settings/hooks"
+        evidence_data = {"repo": repo.full_name, "settings_url": settings_url}
+        
+        try:
+            hooks = repo.get_hooks()
+            insecure = []
+            
+            for hook in hooks:
+                if hook.active and hook.config.get("url", "").startswith("http://"):
+                    insecure.append({"id": hook.id, "url": hook.config.get("url")})
+            
+            evidence_data['insecure_hooks'] = insecure
+            evidence_data['total_count'] = hooks.totalCount
+            
+            if not insecure:
+                 return RuleResult(True, "No insecure webhooks found.", self.compliance_standard, raw_data=evidence_data)
+            
+            return RuleResult(
+                False, 
+                f"Found {len(insecure)} insecure (HTTP) webhooks.", 
+                self.compliance_standard,
+                raw_data=evidence_data,
+                remediation="Review and delete unused or insecure webhooks in Repository Settings > Webhooks.",
+                severity="MEDIUM"
+            )
+        except Exception as e:
+            return RuleResult(False, f"Check failed: {str(e)}", self.compliance_standard, raw_data=evidence_data)
+
+ALL_ORG_RULES = [EnforceMFA, StaleAdminAccess, ExcessiveOwners, Org2FA, ActionsPermissions]
 ALL_REPO_RULES = [
-   SecretScanningEnabled, DependabotEnabled, PrivateRepoVisibility, 
-   EnforceSignedCommits, BranchProtectionMain, RequireCodeReviews, 
-   DismissStaleReviews, RequireLinearHistory, CodeOwnersExist,
-   NoOutsideCollaborators, PreventForcePushes, PreventBranchDeletion, 
-   RequireStatusChecks, LicenseFileExists
+    SecretScanningEnabled, DependabotEnabled, PrivateRepoVisibility, 
+    EnforceSignedCommits, BranchProtectionMain, RequireCodeReviews, 
+    DismissStaleReviews, RequireLinearHistory, CodeOwnersExist,
+    NoOutsideCollaborators, PreventForcePushes, PreventBranchDeletion, 
+    RequireStatusChecks, LicenseFileExists, BranchRulesReviews, RepoWebhooks
 ]

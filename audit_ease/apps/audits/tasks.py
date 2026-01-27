@@ -5,6 +5,10 @@ from github import Github
 
 from apps.audits.models import Audit, Evidence, Question
 from apps.integrations.models import Integration
+from apps.audits.rules.new_checks import (
+    check_org_2fa, check_actions_permissions, 
+    check_repo_webhooks, check_branch_reviews
+)
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +181,19 @@ def run_audit_task(self, audit_id):
                     )
                 except Exception as e:
                     logger.error(f"Check CIS 1.3 failed: {e}")
+
+                # [NEW] Check Org 2FA
+                try:
+                    res = check_org_2fa(target)
+                    save_finding(
+                        res['check_id'], res['title'],
+                        res['status'], res['severity'],
+                        res['system_logs'],
+                        res['issue'],
+                        res['remediation']
+                    )
+                except Exception as e:
+                    logger.error(f"check_org_2fa wrapper failed: {e}")
 
             # === REPO LEVEL CHECKS ===
             repos = target.get_repos()
@@ -503,6 +520,42 @@ def run_audit_task(self, audit_id):
                         "Enable Issues in Repo Settings."
                     )
                 except: pass
+
+                # [NEW] Check Actions Permissions
+                try:
+                    res = check_actions_permissions(repo)
+                    save_finding(
+                        res['check_id'], res['title'],
+                        res['status'], res['severity'],
+                        res['system_logs'],
+                        res['issue'],
+                        res['remediation']
+                    )
+                except Exception as e: logger.error(f"check_actions_permissions failed: {e}")
+
+                # [NEW] Check Repo Webhooks
+                try:
+                    res = check_repo_webhooks(repo)
+                    save_finding(
+                        res['check_id'], res['title'],
+                        res['status'], res['severity'],
+                        res['system_logs'],
+                        res['issue'],
+                        res['remediation']
+                    )
+                except Exception as e: logger.error(f"check_repo_webhooks failed: {e}")
+
+                # [NEW] Check Branch Reviews
+                try:
+                    res = check_branch_reviews(repo)
+                    save_finding(
+                        res['check_id'], res['title'],
+                        res['status'], res['severity'],
+                        res['system_logs'],
+                        res['issue'],
+                        res['remediation']
+                    )
+                except Exception as e: logger.error(f"check_branch_reviews failed: {e}")
 
             # Update Audit - Success
             audit.status = "COMPLETED"

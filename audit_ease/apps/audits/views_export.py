@@ -233,6 +233,13 @@ class AuditExportPDFView(APIView):
                 )
 
             context = self._get_report_context(audit)
+            
+            # DEBUG: Trace context
+            logger.info(f"DEBUG: Context Keys: {list(context.keys())}")
+            if 'checks' in context and context['checks']:
+                logger.info(f"DEBUG: First Check Sample: {json.dumps(context['checks'][0], default=str, indent=2)}")
+            else:
+                logger.warning("DEBUG: 'checks' key missing or empty in context")
 
             # Generate PDF
             html_string = render_to_string('reports/audit_report_fixed.html', context)
@@ -269,6 +276,14 @@ class AuditExportPreviewView(AuditExportPDFView):
                 )
 
             context = self._get_report_context(audit)
+            
+            # DEBUG: Trace context for Preview
+            logger.info(f"DEBUG PREVIEW: Context Keys: {list(context.keys())}")
+            if 'checks' in context and context['checks']:
+                logger.info(f"DEBUG PREVIEW: First Check Sample: {json.dumps(context['checks'][0], default=str, indent=2)}")
+            else:
+                logger.warning("DEBUG PREVIEW: 'checks' key missing or empty in context")
+            
             content = render_to_string('reports/audit_report_fixed.html', context)
             return HttpResponse(content)
             

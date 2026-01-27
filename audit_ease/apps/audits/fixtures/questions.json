@@ -198,5 +198,45 @@
       "description": "Ensure CODEOWNERS file is present.",
       "severity": "LOW"
     }
+  },
+  {
+    "model": "audits.question",
+    "pk": 29,
+    "fields": {
+      "key": "org_2fa",
+      "title": "Organization 2FA Enforcement",
+      "description": "Verify that Two-Factor Authentication (2FA) is enforced at the Organization level.",
+      "severity": "CRITICAL"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 30,
+    "fields": {
+      "key": "actions_perm",
+      "title": "Workflow Permissions Security",
+      "description": "Verify that Default Workflow Permissions are set to Read-only.",
+      "severity": "MEDIUM"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 31,
+    "fields": {
+      "key": "branch_rules_reviews",
+      "title": "Require Approving Reviews",
+      "description": "Verify that Branch Protection requires at least 1 approving review.",
+      "severity": "HIGH"
+    }
+  },
+  {
+    "model": "audits.question",
+    "pk": 32,
+    "fields": {
+      "key": "repo_hooks",
+      "title": "Insecure Webhooks Audit",
+      "description": "Flag any active webhooks that point to insecure (http) URLs.",
+      "severity": "MEDIUM"
+    }
   }
 ]

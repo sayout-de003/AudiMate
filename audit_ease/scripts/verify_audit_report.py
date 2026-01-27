@@ -72,16 +72,19 @@ def verify_audit_report():
         raw_data={"repo_name": "frontend-repo"}
     )
 
-    # 2. Test Preview View (Using AuditReportPDFView with html format)
-    # Patch User method
-    user.get_organization = lambda: org
+    # 2. Test Preview View (Using AuditExportPreviewView from apps.audits.views_export)
+    print("Testing AuditExportPreviewView...")
     
     factory = RequestFactory()
-    request = factory.get(f'/reports/{audit.id}/pdf/?format=html')
+    # URL doesn't matter much for as_view call but good to be consistent
+    request = factory.get(f'/api/v1/audits/{audit.id}/export/preview/')
     request.user = user
     
-    view = AuditReportPDFView.as_view()
-    response = view(request, id=audit.id)
+    from rest_framework.test import force_authenticate
+    force_authenticate(request, user=user)
+
+    view = AuditExportPreviewView.as_view()
+    response = view(request, audit_id=audit.id)
     
     if hasattr(response, 'render'):
         response.render()

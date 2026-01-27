@@ -267,11 +267,11 @@
     <div class="cover-page section-break">
         <div class="cover-title">SECURITY AUDIT REPORT</div>
         <div style="font-size: 14pt; margin-top: 20px; color: #64748b;">
-            Prepared for {{ audit.organization.name }}
+            Prepared for {{ audit.organization.name|default:"Unknown Organization" }}
         </div>
         <div style="margin-top: 60px;">
-            <div
-                style="font-size: 64pt; font-weight: 800; color: {% if stats.pass_rate_percentage >= 80 %}#1B5E20{% else %}#D32F2F{% endif %};">
+            <div class="{% if stats.pass_rate_percentage >= 80 %}text-pass{% else %}text-critical{% endif %}"
+                style="font-size: 64pt; font-weight: 800;">
                 {{ stats.pass_rate_percentage|floatformat:0 }}%
             </div>
             <div style="font-size: 12pt; text-transform: uppercase; letter-spacing: 2px;">Compliance Score</div>
@@ -285,8 +285,9 @@
     <!-- Executive Summary -->
     <div class="section-break">
         <h1>Executive Summary</h1>
-        <p>This report provides a detailed analysis of the security posture of <strong>{{ audit.organization.name
-                }}</strong> based on the audit performed on {{ audit.created_at|date:"F j, Y" }}.</p>
+        <p>This report provides a detailed analysis of the security posture of <strong>
+                {{ audit.organization.name|default:"Unknown Organization" }}</strong> based on the audit performed on
+            {{ audit.created_at|date:"F j, Y" }} </p>
 
         <table style="margin-top: 20px; border: 1px solid #e2e8f0;">
             <thead>
@@ -342,15 +343,15 @@
                     {% else %}
                     <span class="badge badge-PASS">PASS</span>
                     {% endif %}
-                    <span class="badge" style="background: #f3f4f6; color: #374151; margin-left: 5px;">{{ check.severity
-                        }}</span>
+                    <span class="badge" style="background: #f3f4f6; color: #374151; margin-left: 5px;">
+                        {{ check.severity|default:"UNKNOWN" }}
+                    </span>
                 </div>
             </div>
 
             <div class="finding-body">
                 <p>{{ check.description }}</p>
 
-                {% if check.status == 'FAIL' %}
                 <!-- Master Finding Logic (Table of affected repos) -->
                 <div class="mt-4">
                     <strong>Affected Resources:</strong>
@@ -363,45 +364,48 @@
                         </thead>
                         <tbody>
                             {% for finding in check.findings %}
-                            {% if finding.status == 'FAIL' %}
                             <tr>
-                                <td style="vertical-align: top;"><strong>{{ finding.resource }}</strong></td>
+                                <td style="vertical-align: top;">
+                                    <strong>{{ finding.resource }}</strong>
+                                    <div style="margin-top: 5px;">
+                                        {% if finding.status == 'FAIL' %}
+                                        <span class="badge badge-FAIL">FAIL</span>
+                                        {% else %}
+                                        <span class="badge badge-PASS">PASS</span>
+                                        {% endif %}
+                                    </div>
+                                </td>
                                 <td style="vertical-align: top;">
                                     {{ finding.comment|default:"No details provided." }}
                                     {% if finding.remediation %}
                                     <div style="margin-top:5px; font-weight:bold; color: #555;">Remediation:</div>
-                                    <div style="background:#eee; padding:5px; border-radius:3px;">{{ finding.remediation
-                                        }}</div>
+                                    <div style="background:#eee; padding:5px; border-radius:3px;">
+                                        {{ finding.remediation|default:"No remediation steps provided." }}
+                                    </div>
                                     {% endif %}
 
                                     <!-- Technical Evidence Block inside the table row or below? -->
                                     <!-- Keeping it concise in table, detailed evidence below if needed. Using inline format here per request -->
-                                    <div class="evidence-container">
+                                    <div class="evidence-container" style="display: block !important;">
                                         {% if finding.screenshot %}
                                         <div class="log-label">Screenshot:</div>
                                         <img src="file://{{ finding.screenshot.path }}" class="evidence-img">
-                                        {% elif finding.json_log %}
+                                        {% endif %}
+                                        {% if finding.json_log %}
                                         <div class="log-label">System Logs:</div>
                                         <pre class="json-logs">{{ finding.json_log }}</pre>
-                                        {% else %}
-                                        <div style="font-style: italic; color: #888; font-size: 8pt; margin-top: 5px;">
-                                            No visual evidence or logs captured.
-                                        </div>
+                                        {% endif %}
+                                        {% if finding.raw_data %}
+                                        <div class="log-label">Raw Data:</div>
+                                        <pre class="json-logs">{{ finding.raw_data }}</pre>
                                         {% endif %}
                                     </div>
                                 </td>
                             </tr>
-                            {% endif %}
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
-                {% else %}
-                <!-- Passing checks summary -->
-                <div style="margin-top: 10px; font-size: 9pt; color: #1B5E20;">
-                    ✓ Compliance met across {{ check.passed_count }} resource(s).
-                </div>
-                {% endif %}
             </div>
         </div>
         {% endfor %}
