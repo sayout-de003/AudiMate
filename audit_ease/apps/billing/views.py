@@ -82,7 +82,18 @@ class BillingViewSet(viewsets.ViewSet):
         serializer.is_valid(raise_exception=True)
         
         organization_id = serializer.validated_data['organization_id']
-        price_id = serializer.validated_data.get('price_id')
+        price_key = serializer.validated_data.get('price_id')
+        
+        # Validate Price ID
+        from .constants import STRIPE_PRICE_IDS
+        
+        if price_key not in STRIPE_PRICE_IDS:
+             return Response(
+                {"error": f"Invalid price_id. allowed: {list(STRIPE_PRICE_IDS.keys())}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        stripe_price_id = STRIPE_PRICE_IDS[price_key]
         
         # Verify user has access to this organization
         try:
@@ -118,7 +129,7 @@ class BillingViewSet(viewsets.ViewSet):
                 mode='subscription',
                 customer=org.stripe_customer_id,
                 line_items=[{
-                    'price': price_id,
+                    'price': stripe_price_id,
                     'quantity': 1,
                 }],
                 success_url=f"{settings.FRONTEND_URL}/billing/success?session_id={{CHECKOUT_SESSION_ID}}",
@@ -199,6 +210,11 @@ def stripe_webhook(request):
     elif event['type'] == 'customer.subscription.deleted':
         subscription = event['data']['object']
         handle_subscription_deleted(subscription)
+
+    # Handle invoice.payment_failed
+    elif event['type'] == 'invoice.payment_failed':
+        invoice = event['data']['object']
+        handle_payment_failed(invoice)
     
     # Log unhandled events for debugging
     else:
@@ -243,10 +259,54 @@ def handle_checkout_session_completed(session):
             'subscription_ends_at'
         ])
         
+        
         logger.info(
             f"Updated org {org.name} subscription to active. "
             f"Stripe subscription: {subscription.id}"
         )
+
+        # Send Success Email
+        try:
+            from django.core.mail import send_mail
+            import datetime
+            
+            # Try to get email from session details or customer
+            customer_email = session.get('customer_details', {}).get('email')
+            if not customer_email:
+                # Fallback to org owner
+                customer_email = org.owner.email
+
+            amount_total = session.get('amount_total', 0) / 100.0
+            currency = session.get('currency', 'usd').upper()
+            date_str = datetime.datetime.now().strftime("%Y-%m-%d")
+
+            send_mail(
+                subject=f"AuditMate Subscription Confirmed - {org.name}",
+                message=f"""
+Hello,
+
+Your subscription for {org.name} has been successfully confirmed.
+
+Plan: AuditMate Pro
+Amount: {currency} {amount_total}
+Date: {date_str}
+Transaction ID: {session.id}
+
+Your workspace now has full access to all Pro features, including unlimited audits and team members.
+
+Thank you for choosing AuditMate!
+
+Best regards,
+ The AuditMate Team
+""",
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[customer_email],
+                fail_silently=False,
+            )
+            logger.info(f"Sent subscription confirmation email to {customer_email}")
+        except Exception as e:
+            logger.error(f"Failed to send confirmation email: {e}")
+
     except Organization.DoesNotExist:
         logger.error(f"Organization not found for checkout session: {session.id}")
     except stripe.error.InvalidRequestError as e:
@@ -284,3 +344,36 @@ def handle_subscription_deleted(subscription):
         logger.error(f"Stripe error in subscription handler: {str(e)}")
     except Exception as e:
         logger.error(f"Error handling subscription deletion: {str(e)}")
+
+
+def handle_payment_failed(invoice):
+    """
+    Handle invoice.payment_failed event
+    
+    Update organization subscription status to 'past_due' or 'free'
+    """
+    try:
+        # Retrieve the customer
+        customer_id = invoice.customer
+        if not customer_id:
+            return
+
+        customer = stripe.Customer.retrieve(customer_id)
+        organization_id = customer.get('metadata', {}).get('organization_id')
+        
+        if not organization_id:
+            logger.warning(f"No organization_id in customer {customer_id}")
+            return
+        
+        org = Organization.objects.get(id=organization_id)
+        
+        # Update status to alert user/restrict access
+        org.subscription_status = 'past_due'
+        org.save(update_fields=['subscription_status'])
+        
+        logger.info(f"Payment failed for org {org.name}. Status set to past_due.")
+        
+    except Organization.DoesNotExist:
+        logger.error(f"Organization not found for invoice: {invoice.id}")
+    except Exception as e:
+        logger.error(f"Error handling payment failure: {str(e)}")

@@ -1,11 +1,14 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { authApi } from '../api/auth';
 import { orgsApi } from '../api/orgs';
 import { billingApi } from '../api/billing';
 import { Button } from '../components/ui/Button';
-import { Loader2, CreditCard, Check, X } from 'lucide-react';
+import { Loader2, CreditCard, Check } from 'lucide-react';
 
 export function Billing() {
+    const [billingInterval, setBillingInterval] = useState<'monthly' | 'yearly'>('monthly');
+
     const { data: user } = useQuery({
         queryKey: ['me'],
         queryFn: authApi.getMe
@@ -40,10 +43,6 @@ export function Billing() {
     const isActive = organization?.subscription_status === 'active';
     const isTrial = organization?.subscription_status === 'trial';
     const isFree = organization?.subscription_status === 'free';
-    const needsUpgrade = isFree || isTrial || 
-        organization?.subscription_status === 'expired' || 
-        organization?.subscription_status === 'canceled' || 
-        organization?.subscription_status === 'past_due';
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
@@ -108,86 +107,125 @@ export function Billing() {
             </div>
 
             {/* Pricing Plans */}
-            {needsUpgrade && (
-                <div>
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">Upgrade Your Plan</h2>
+            <div>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6">Upgrade Your Plan</h2>
+                {/* Debug Info (can remove later) */}
+                <p className="text-sm text-gray-400 mb-4">Current Status: {organization?.subscription_status}</p>
 
-                    <div className="grid gap-6 md:grid-cols-2">
-                        {/* Starter Plan */}
-                        <div className="rounded-xl border-2 border-gray-200 bg-white p-6 shadow-sm dark:bg-gray-800 dark:border-gray-700">
-                            <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">Starter</h3>
-                            <div className="mt-4 flex items-baseline">
-                                <span className="text-4xl font-extrabold text-gray-900 dark:text-white">$29</span>
-                                <span className="ml-1 text-gray-500 dark:text-gray-400">/month</span>
-                            </div>
-                            <ul className="mt-6 space-y-3">
-                                <li className="flex items-start">
-                                    <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
-                                    <span className="text-gray-700 dark:text-gray-300">Up to 10 audits/month</span>
-                                </li>
-                                <li className="flex items-start">
-                                    <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
-                                    <span className="text-gray-700 dark:text-gray-300">5 team members</span>
-                                </li>
-                                <li className="flex items-start">
-                                    <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
-                                    <span className="text-gray-700 dark:text-gray-300">Basic integrations</span>
-                                </li>
-                                <li className="flex items-start">
-                                    <X className="h-5 w-5 text-red-500 mr-2 flex-shrink-0" />
-                                    <span className="text-gray-400 line-through">Advanced analytics</span>
-                                </li>
-                            </ul>
-                            <Button
-                                className="w-full mt-6"
-                                onClick={() => handleUpgrade('price_starter')}
-                            >
-                                Upgrade to Starter
-                            </Button>
-                        </div>
-
-                        {/* Pro Plan */}
-                        <div className="rounded-xl border-2 border-indigo-600 bg-white p-6 shadow-lg dark:bg-gray-800 relative">
-                            <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 px-3 py-1 bg-indigo-600 text-white text-xs font-semibold rounded-full">
-                                RECOMMENDED
-                            </div>
-                            <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">Pro</h3>
-                            <div className="mt-4 flex items-baseline">
-                                <span className="text-4xl font-extrabold text-gray-900 dark:text-white">$99</span>
-                                <span className="ml-1 text-gray-500 dark:text-gray-400">/month</span>
-                            </div>
-                            <ul className="mt-6 space-y-3">
-                                <li className="flex items-start">
-                                    <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
-                                    <span className="text-gray-700 dark:text-gray-300">Unlimited audits</span>
-                                </li>
-                                <li className="flex items-start">
-                                    <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
-                                    <span className="text-gray-700 dark:text-gray-300">Unlimited team members</span>
-                                </li>
-                                <li className="flex items-start">
-                                    <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
-                                    <span className="text-gray-700 dark:text-gray-300">All integrations</span>
-                                </li>
-                                <li className="flex items-start">
-                                    <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
-                                    <span className="text-gray-700 dark:text-gray-300">Advanced analytics</span>
-                                </li>
-                                <li className="flex items-start">
-                                    <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
-                                    <span className="text-gray-700 dark:text-gray-300">Priority support</span>
-                                </li>
-                            </ul>
-                            <Button
-                                className="w-full mt-6"
-                                onClick={() => handleUpgrade('price_pro')}
-                            >
-                                Upgrade to Pro
-                            </Button>
-                        </div>
+                {/* Billing Interval Toggle */}
+                <div className="flex justify-center mb-8">
+                    <div className="relative bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg flex">
+                        <button
+                            onClick={() => setBillingInterval('monthly')}
+                            className={`relative px-4 py-2 text-sm font-medium rounded-md transition-all ${billingInterval === 'monthly'
+                                ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                                : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                                }`}
+                        >
+                            Monthly
+                        </button>
+                        <button
+                            onClick={() => setBillingInterval('yearly')}
+                            className={`relative px-4 py-2 text-sm font-medium rounded-md transition-all ${billingInterval === 'yearly'
+                                ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                                : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                                }`}
+                        >
+                            Yearly <span className="text-green-600 text-xs ml-1 font-bold">-20%</span>
+                        </button>
                     </div>
                 </div>
-            )}
+
+                <div className="grid gap-6 md:grid-cols-2">
+                    {/* Free Plan */}
+                    <div className="rounded-xl border-2 border-gray-200 bg-white p-6 shadow-sm dark:bg-gray-800 dark:border-gray-700">
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">Free</h3>
+                        <div className="mt-4 flex items-baseline">
+                            <span className="text-4xl font-extrabold text-gray-900 dark:text-white">$0</span>
+                            <span className="ml-1 text-gray-500 dark:text-gray-400">/month</span>
+                        </div>
+                        <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+                            Perfect for getting started with basic compliance needs.
+                        </p>
+                        <ul className="mt-6 space-y-3">
+                            <li className="flex items-start">
+                                <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
+                                <span className="text-gray-700 dark:text-gray-300">Up to 3 audits/month</span>
+                            </li>
+                            <li className="flex items-start">
+                                <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
+                                <span className="text-gray-700 dark:text-gray-300">Community Support</span>
+                            </li>
+                            <li className="flex items-start">
+                                <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
+                                <span className="text-gray-700 dark:text-gray-300">Basic Reports</span>
+                            </li>
+                        </ul>
+                        <Button
+                            className="w-full mt-6"
+                            variant="outline"
+                            disabled={isFree}
+                            onClick={() => { }} // No-op for now, downgrade flow not implemented
+                        >
+                            {isFree ? 'Current Plan' : 'Downgrade to Free'}
+                        </Button>
+                    </div>
+
+                    {/* Pro Plan */}
+                    <div className={`rounded-xl border-2 ${isActive ? 'border-green-500' : 'border-indigo-600'} bg-white p-6 shadow-lg dark:bg-gray-800 relative`}>
+                        <div className={`absolute -top-3 left-1/2 transform -translate-x-1/2 px-3 py-1 ${isActive ? 'bg-green-500' : 'bg-indigo-600'} text-white text-xs font-semibold rounded-full`}>
+                            {isActive ? 'ACTIVE PLAN' : 'RECOMMENDED'}
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">Pro</h3>
+                        <div className="mt-4 flex items-baseline">
+                            {billingInterval === 'monthly' ? (
+                                <>
+                                    <span className="text-4xl font-extrabold text-gray-900 dark:text-white">$69</span>
+                                    <span className="ml-1 text-gray-500 dark:text-gray-400">/month</span>
+                                </>
+                            ) : (
+                                <>
+                                    <span className="text-4xl font-extrabold text-gray-900 dark:text-white">$55.20</span>
+                                    <span className="ml-1 text-gray-500 dark:text-gray-400">/month</span>
+                                    <span className="ml-2 text-xs text-green-600 font-semibold bg-green-100 px-2 py-0.5 rounded-full dark:bg-green-900/30 dark:text-green-400">
+                                        Billed ${(55.20 * 12).toFixed(2)} yearly
+                                    </span>
+                                </>
+                            )}
+                        </div>
+                        <ul className="mt-6 space-y-3">
+                            <li className="flex items-start">
+                                <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
+                                <span className="text-gray-700 dark:text-gray-300">Unlimited audits</span>
+                            </li>
+                            <li className="flex items-start">
+                                <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
+                                <span className="text-gray-700 dark:text-gray-300">Unlimited team members</span>
+                            </li>
+                            <li className="flex items-start">
+                                <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
+                                <span className="text-gray-700 dark:text-gray-300">All integrations</span>
+                            </li>
+                            <li className="flex items-start">
+                                <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
+                                <span className="text-gray-700 dark:text-gray-300">Advanced analytics</span>
+                            </li>
+                            <li className="flex items-start">
+                                <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" />
+                                <span className="text-gray-700 dark:text-gray-300">Priority support</span>
+                            </li>
+                        </ul>
+                        <Button
+                            className="w-full mt-6"
+                            onClick={() => handleUpgrade(billingInterval === 'monthly' ? 'price_pro_monthly' : 'price_pro_yearly')}
+                            disabled={isActive}
+                            variant={isActive ? 'outline' : 'default'}
+                        >
+                            {isActive ? 'Current Plan' : 'Upgrade to Pro'}
+                        </Button>
+                    </div>
+                </div>
+            </div>
 
             {isActive && (
                 <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:bg-gray-800 dark:border-gray-700">
@@ -195,9 +233,15 @@ export function Billing() {
                     <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                         To cancel or modify your subscription, please contact support.
                     </p>
-                    <Button variant="outline">Contact Support</Button>
+                    <Button
+                        variant="outline"
+                        onClick={() => window.location.href = 'mailto:support@auditmate.com?subject=Subscription%20Management'}
+                    >
+                        Contact Support
+                    </Button>
                 </div>
-            )}
-        </div>
+            )
+            }
+        </div >
     );
 }

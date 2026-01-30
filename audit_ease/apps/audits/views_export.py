@@ -52,10 +52,15 @@ class AuditExportCSVView(APIView):
             audit = get_object_or_404(Audit, id=audit_id)
             self.check_object_permissions(request, audit)
             
-            # 2. Subscription Check
-            if audit.organization.subscription_status != 'active':
+            # 2. Subscription Check (Gatekeeper)
+            if not request.user.has_pro_access:
                 return Response(
-                    {"error": "Subscribe to download"},
+                    {
+                        "error": "Premium Feature",
+                        "code": "PAYMENT_REQUIRED",
+                        "ui_action": "OPEN_UPGRADE_MODAL",
+                        "message": "Upgrade to Pro to download compliant CSV reports."
+                    },
                     status=status.HTTP_403_FORBIDDEN
                 )
             
@@ -226,9 +231,14 @@ class AuditExportPDFView(APIView):
             audit = get_object_or_404(Audit.objects.select_related('organization'), id=audit_id)
             self.check_object_permissions(request, audit)
 
-            if audit.organization.subscription_status != 'active':
+            if not request.user.has_pro_access:
                 return Response(
-                    {"error": "Subscribe to download"},
+                    {
+                        "error": "Premium Feature",
+                        "code": "PAYMENT_REQUIRED",
+                        "ui_action": "OPEN_UPGRADE_MODAL",
+                        "message": "Upgrade to Pro to download compliant PDF reports."
+                    },
                     status=status.HTTP_403_FORBIDDEN
                 )
 
@@ -267,13 +277,14 @@ class AuditExportPreviewView(AuditExportPDFView):
             self.check_object_permissions(request, audit)
 
             # NOTE: We allow preview even if not subscribed? 
-            # Spec doesn't say, but usually preview is fine or same restriction.
-            # Let's keep consistency with PDF view for now.
-            if audit.organization.subscription_status != 'active':
-                 return Response(
-                    {"error": "Subscribe to view report"},
-                    status=status.HTTP_403_FORBIDDEN
-                )
+            # Spec says "Protect high-value features". Usually preview is fine, but PDF is the deliverable.
+            # Let's BLOCK preview too to drive conversion, or allow it as a teaser?
+            # CRO Directive: "You are the bouncer... Protect PDF Reports."
+            # A preview is essentially the report. We should block it effectively or watermark it.
+            # Strategy: Block it to force upgrade for the "Official" experience.
+            # NOTE: We allow preview even if not subscribed so they can see what they are missing (or just see the report).
+            # The PDF download remains gated.
+            pass
 
             context = self._get_report_context(audit)
             
@@ -304,9 +315,14 @@ class ExportAuditReportView(APIView):
             audit = get_object_or_404(Audit, id=audit_id)
             self.check_object_permissions(request, audit)
             
-            if audit.organization.subscription_status != 'active':
+            if not request.user.has_pro_access:
                 return Response(
-                    {"error": "Subscribe to download"},
+                    {
+                        "error": "Premium Feature",
+                        "code": "PAYMENT_REQUIRED",
+                        "ui_action": "OPEN_UPGRADE_MODAL",
+                        "message": "Upgrade to Pro to download detailed Excel reports."
+                    },
                     status=status.HTTP_403_FORBIDDEN
                 )
 

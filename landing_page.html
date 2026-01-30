@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AuditEase | Point-in-Time Compliance</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        /* =========================================
+           1. CORE VARIABLES & RESET
+           ========================================= */
+        :root {
+            --bg-dark: #030712;
+            --bg-card: #0f172a;
+            --bg-sidebar: #020617;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --primary-glow: rgba(59, 130, 246, 0.3);
+            --accent: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: rgba(255, 255, 255, 0.08);
+            --glass-bg: rgba(15, 23, 42, 0.6);
+            --glass-blur: blur(12px);
+            --sidebar-width: 260px;
+            --header-height: 70px;
+            --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        a { text-decoration: none; color: inherit; cursor: pointer; }
+        ul { list-style: none; }
+        button { cursor: pointer; border: none; font-family: inherit; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-dark); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+        /* =========================================
+           2. SHARED UTILITIES
+           ========================================= */
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+        .hidden { display: none !important; }
+        .flex { display: flex; }
+        .items-center { align-items: center; }
+        .justify-center { justify-content: center; }
+        .justify-between { justify-content: space-between; }
+        .flex-col { flex-direction: column; }
+        .gap-2 { gap: 0.5rem; }
+        .gap-4 { gap: 1rem; }
+        .text-center { text-align: center; }
+        .text-sm { font-size: 0.875rem; }
+        .text-xs { font-size: 0.75rem; }
+        .font-bold { font-weight: 700; }
+        .text-muted { color: var(--text-muted); }
+        .text-primary { color: var(--primary); }
+        .text-success { color: var(--accent); }
+        .text-danger { color: var(--danger); }
+        .text-warning { color: var(--warning); }
+
+        .btn {
+            padding: 10px 24px;
+            border-radius: 6px;
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid transparent;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 0 20px var(--primary-glow);
+        }
+        .btn-primary:hover { background: var(--primary-hover); transform: translateY(-2px); }
+        
+        .btn-secondary {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+        }
+        .btn-secondary:hover { background: rgba(255,255,255,0.08); border-color: var(--text-muted); }
+
+        .badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .badge-success { background: rgba(16, 185, 129, 0.15); color: var(--accent); border: 1px solid rgba(16, 185, 129, 0.2); }
+        .badge-warning { background: rgba(245, 158, 11, 0.15); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.2); }
+        .badge-danger { background: rgba(239, 68, 68, 0.15); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2); }
+        .badge-neutral { background: rgba(255, 255, 255, 0.05); color: var(--text-muted); border: 1px solid var(--border); }
+
+        /* =========================================
+           3. LANDING PAGE SPECIFIC STYLES
+           ========================================= */
+        #view-landing nav {
+            position: fixed; top: 0; width: 100%; padding: 20px 0;
+            background: rgba(3, 7, 18, 0.85); backdrop-filter: blur(10px);
+            z-index: 100; border-bottom: 1px solid var(--border);
+        }
+        
+        .section-padding { padding: 120px 0; }
+        .section-title { font-size: 2.5rem; font-weight: 700; margin-bottom: 1rem; line-height: 1.2; }
+        .section-subtitle { color: var(--text-muted); max-width: 600px; margin: 0 auto 4rem auto; font-size: 1.1rem; }
+
+        /* Hero */
+        .hero { padding: 180px 0 100px; position: relative; overflow: hidden; }
+        .hero h1 { font-size: 3.8rem; line-height: 1.1; margin-bottom: 24px; letter-spacing: -1.5px; font-weight: 800; }
+        .hero p { font-size: 1.25rem; color: var(--text-muted); margin-bottom: 32px; max-width: 540px; }
+        
+        .hero-bg-glow {
+            position: absolute; top: -20%; left: 50%; transform: translateX(-50%);
+            width: 800px; height: 800px;
+            background: radial-gradient(circle, rgba(59,130,246,0.15) 0%, rgba(0,0,0,0) 70%);
+            z-index: -1; pointer-events: none;
+        }
+
+        /* Terminal */
+        .terminal-window {
+            background: #0d1117; border-radius: 12px; border: 1px solid var(--border);
+            box-shadow: 0 30px 60px -12px rgba(0,0,0,0.6); font-family: 'JetBrains Mono', monospace;
+            overflow: hidden;
+        }
+        .terminal-header { padding: 12px 16px; background: #161b22; border-bottom: 1px solid var(--border); display: flex; gap: 8px; }
+        .dot { width: 10px; height: 10px; border-radius: 50%; }
+        .terminal-body { padding: 20px; min-height: 320px; font-size: 0.9rem; }
+        .cmd-line { margin-bottom: 8px; display: block; }
+
+        /* Logos/Social Proof */
+        .logo-strip { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 40px 0; background: rgba(255,255,255,0.01); }
+        .logos-grid { display: flex; justify-content: center; gap: 60px; opacity: 0.7; font-size: 1.1rem; align-items: center; }
+        
+        /* Philosophy Section */
+        .philosophy-strip { padding: 60px 0; border-bottom: 1px solid var(--border); background: var(--bg-card); }
+        .philosophy-items { display: flex; justify-content: space-between; text-align: center; }
+        .phil-item h3 { color: var(--primary); margin-bottom: 8px; font-size: 1.1rem; }
+        
+        /* Use Cases */
+        .use-case-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 80px; }
+        .use-case-card { background: var(--bg-card); padding: 24px; border-radius: 8px; border: 1px solid var(--border); transition: var(--transition); }
+        .use-case-card:hover { border-color: var(--primary); transform: translateY(-4px); }
+        .use-case-icon { color: var(--warning); margin-bottom: 16px; font-size: 1.5rem; }
+
+        /* Feature Rows (ZigZag) */
+        .feature-row { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; margin-bottom: 120px; }
+        .feature-row.reverse { direction: rtl; }
+        .feature-row.reverse .feature-text { direction: ltr; }
+        .feature-image-card {
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px;
+            padding: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.3); position: relative; overflow: hidden;
+        }
+        .feature-image-card::before {
+            content:''; position: absolute; top:0; left:0; width:100%; height:100%;
+            background: linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.8) 100%); z-index: 2;
+        }
+        .feature-tag { color: var(--primary); font-weight: 600; text-transform: uppercase; letter-spacing: 1px; font-size: 0.8rem; margin-bottom: 10px; display: block; }
+        .check-list li { margin-bottom: 12px; display: flex; align-items: center; gap: 10px; color: var(--text-muted); }
+        .check-list i { color: var(--accent); }
+
+        /* Scope Section */
+        .scope-box { background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 12px; padding: 40px; margin-bottom: 80px; }
+        .scope-list { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 20px; }
+        .scope-item { background: var(--bg-dark); border: 1px solid var(--border); padding: 8px 16px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; display: flex; align-items: center; gap: 8px; }
+
+        /* Anti-Persona & Security */
+        .anti-persona-section { background: rgba(239, 68, 68, 0.03); border: 1px solid rgba(239, 68, 68, 0.1); border-radius: 12px; padding: 40px; margin-bottom: 60px; }
+        .security-section { background: rgba(16, 185, 129, 0.03); border: 1px solid rgba(16, 185, 129, 0.1); border-radius: 12px; padding: 40px; margin-bottom: 60px; }
+
+        /* FAQ Section */
+        .faq-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 30px; }
+        .faq-card { background: var(--bg-card); border: 1px solid var(--border); padding: 30px; border-radius: 12px; }
+        .faq-question { font-weight: 700; font-size: 1.1rem; margin-bottom: 12px; color: white; }
+        .faq-answer { color: var(--text-muted); font-size: 0.95rem; }
+
+        /* Pricing */
+        .pricing-toggle { display: flex; justify-content: center; align-items: center; gap: 16px; margin-bottom: 48px; }
+        .switch { position: relative; display: inline-block; width: 50px; height: 26px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--bg-card); transition: .4s; border-radius: 34px; border: 1px solid var(--border); }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--primary); }
+        input:checked + .slider:before { transform: translateX(24px); }
+        
+        .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; max-width: 900px; margin: 0 auto; }
+        .pricing-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 40px; display: flex; flex-direction: column; transition: var(--transition); }
+        .pricing-card.popular { border-color: var(--primary); box-shadow: 0 0 30px rgba(59, 130, 246, 0.1); position: relative; }
+        .pop-badge { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: var(--primary); padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: bold; }
+        .price { font-size: 3rem; font-weight: 700; margin: 20px 0; }
+        .price span { font-size: 1rem; color: var(--text-muted); font-weight: 400; }
+
+        /* CTA Strip */
+        .cta-strip { background: linear-gradient(90deg, #1e3a8a 0%, #0f172a 100%); padding: 60px 0; text-align: center; border-top: 1px solid var(--border); }
+
+        /* Footer */
+        footer { border-top: 1px solid var(--border); padding: 80px 0 40px; background: #020617; }
+        .footer-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 40px; margin-bottom: 60px; }
+        .footer-col h4 { font-size: 1rem; font-weight: 600; margin-bottom: 20px; color: white; }
+        .footer-col a { display: block; color: var(--text-muted); margin-bottom: 12px; font-size: 0.9rem; transition: var(--transition); }
+        .footer-col a:hover { color: var(--primary); }
+
+        /* =========================================
+           4. APP DASHBOARD STYLES (The "SaaS" Part)
+           ========================================= */
+        #view-dashboard { display: flex; min-height: 100vh; }
+        
+        .sidebar {
+            width: var(--sidebar-width); background: var(--bg-sidebar); border-right: 1px solid var(--border);
+            position: fixed; height: 100vh; padding: 24px; display: flex; flex-direction: column;
+            z-index: 50; transition: transform 0.3s ease;
+        }
+        .sidebar-logo { font-size: 1.25rem; font-weight: 700; color: white; display: flex; align-items: center; gap: 10px; margin-bottom: 40px; }
+        .sidebar-menu { flex: 1; }
+        .menu-label { font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; letter-spacing: 1px; font-weight: 600; }
+        .menu-item {
+            display: flex; align-items: center; gap: 12px; padding: 12px;
+            color: var(--text-muted); border-radius: 6px; margin-bottom: 4px; transition: var(--transition);
+            font-size: 0.95rem; cursor: pointer;
+        }
+        .menu-item:hover, .menu-item.active { background: rgba(59, 130, 246, 0.1); color: var(--primary); }
+        .user-profile {
+            margin-top: auto; padding-top: 20px; border-top: 1px solid var(--border);
+            display: flex; align-items: center; gap: 12px;
+        }
+        .avatar { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), #8b5cf6); display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; }
+        
+        .main-content { margin-left: var(--sidebar-width); flex: 1; padding: 32px; background: #030712; width: calc(100% - var(--sidebar-width)); }
+        
+        /* Demo Banner */
+        .demo-banner {
+            background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3);
+            color: var(--warning); padding: 12px 16px; border-radius: 8px; margin-bottom: 24px;
+            display: flex; align-items: center; gap: 12px; font-size: 0.9rem;
+        }
+        
+        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
+        .page-title { font-size: 1.8rem; font-weight: 600; }
+        
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-bottom: 32px; }
+        .stat-card { background: var(--bg-card); padding: 24px; border-radius: 12px; border: 1px solid var(--border); }
+        .stat-label { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 8px; }
+        .stat-value { font-size: 2rem; font-weight: 700; color: white; }
+        .stat-delta { font-size: 0.85rem; margin-top: 8px; display: flex; align-items: center; gap: 4px; }
+        
+        .data-table-container { background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; margin-bottom: 32px; }
+        .table-header { padding: 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { padding: 16px 24px; background: rgba(255,255,255,0.02); color: var(--text-muted); font-weight: 500; font-size: 0.85rem; }
+        td { padding: 16px 24px; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: rgba(255,255,255,0.01); }
+
+        .settings-card { background: var(--bg-card); border-radius: 12px; border: 1px solid var(--border); padding: 32px; max-width: 800px; }
+        .form-group { margin-bottom: 24px; }
+        .form-label { display: block; margin-bottom: 8px; color: var(--text-muted); font-size: 0.9rem; }
+        .form-input { 
+            width: 100%; background: #020617; border: 1px solid var(--border); padding: 12px; 
+            border-radius: 6px; color: white; font-family: 'JetBrains Mono', monospace; transition: var(--transition);
+        }
+        .form-input:focus { border-color: var(--primary); outline: none; }
+        .input-group { display: flex; gap: 10px; }
+
+        .chart-container { height: 300px; display: flex; align-items: flex-end; gap: 20px; padding: 20px 0; }
+        .chart-bar { flex: 1; background: var(--primary); opacity: 0.7; border-radius: 4px 4px 0 0; position: relative; transition: height 1s ease; }
+        .chart-bar:hover { opacity: 1; }
+
+        /* =========================================
+           5. AUTH SCREEN
+           ========================================= */
+        #view-auth {
+            display: flex; align-items: center; justify-content: center; height: 100vh;
+            background: radial-gradient(circle at center, #1e293b 0%, #020617 100%);
+        }
+        .auth-card { width: 400px; padding: 40px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+
+        /* Toast Notification */
+        .toast {
+            position: fixed; bottom: 30px; right: 30px; background: var(--bg-card); border: 1px solid var(--border);
+            padding: 16px 24px; border-radius: 8px; display: flex; align-items: center; gap: 12px;
+            transform: translateY(100px); opacity: 0; transition: all 0.3s ease; z-index: 2000;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); border-left: 4px solid var(--primary);
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+
+        @media (max-width: 768px) {
+            .hero-grid { grid-template-columns: 1fr; }
+            .feature-row { grid-template-columns: 1fr; gap: 40px; margin-bottom: 80px; }
+            .feature-row.reverse { direction: ltr; }
+            .philosophy-items { flex-direction: column; gap: 30px; }
+            .use-case-grid { grid-template-columns: 1fr; }
+            .faq-grid { grid-template-columns: 1fr; }
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.open { transform: translateX(0); }
+            .main-content { margin-left: 0; width: 100%; }
+            .stats-grid { grid-template-columns: 1fr 1fr; }
+            .nav-links { display: none; }
+            .footer-grid { grid-template-columns: 1fr; gap: 30px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="view-landing">
+        <nav>
+            <div class="container flex justify-between items-center">
+                <a class="flex items-center gap-2 font-bold text-lg" href="#" onclick="router.navigate('landing')">
+                    <i class="fa-solid fa-shield-halved text-primary"></i> AuditEase
+                </a>
+                <div class="nav-links flex gap-4 text-sm text-muted">
+                    <a href="#why">Why AuditEase</a>
+                    <a href="#features">Evidence</a>
+                    <a href="#faq">FAQ</a>
+                    <a href="#pricing">Pricing</a>
+                </div>
+                <div class="flex gap-2">
+                    <button class="btn btn-secondary" onclick="router.navigate('auth')">Log In</button>
+                    <button class="btn btn-primary" onclick="router.navigate('auth')">Get Demo</button>
+                </div>
+            </div>
+        </nav>
+
+        <header class="hero container">
+            <div class="hero-bg-glow"></div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center;" class="hero-grid">
+                <div>
+                    <h1>Pass audits. Don’t adopt a <span style="color: var(--primary);">second job.</span></h1>
+                    <p>AuditEase captures point-in-time security evidence and turns it into reports you can actually send. Built for exhausted founders who hate manual screenshots.</p>
+                    <div class="flex gap-4">
+                        <button class="btn btn-primary" onclick="router.navigate('auth')">Start Free Audit</button>
+                        <button class="btn btn-secondary" onclick="window.open('#', '_blank')"><i class="fa-regular fa-file-pdf"></i> View Sample Report</button>
+                    </div>
+                </div>
+                
+                <div class="terminal-window">
+                    <div class="terminal-header">
+                        <div class="dot" style="background:#ef4444"></div>
+                        <div class="dot" style="background:#f59e0b"></div>
+                        <div class="dot" style="background:#10b981"></div>
+                    </div>
+                    <div class="terminal-body" id="landing-terminal">
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="logo-strip">
+            <div class="container">
+                <div class="logos-grid text-sm">
+                    <span>Used by teams securing:</span>
+                    <span style="color:white; font-weight:600;">$100M+ in assets</span>
+                    <span>•</span>
+                    <span style="color:white; font-weight:600;">2,500+ Repos</span>
+                    <span>•</span>
+                    <span style="color:white; font-weight:600;">Early-stage SOC2</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="philosophy-strip">
+            <div class="container">
+                <div class="philosophy-items">
+                    <div class="phil-item">
+                        <h3>Audits are events</h3>
+                        <p class="text-muted text-sm">Not lifestyle choices.</p>
+                    </div>
+                    <div class="phil-item">
+                        <h3>Evidence beats dashboards</h3>
+                        <p class="text-muted text-sm">Auditors want proof, not UI.</p>
+                    </div>
+                    <div class="phil-item">
+                        <h3>Honest documentation</h3>
+                        <p class="text-muted text-sm">Beats fake perfection.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <section class="section-padding" id="why">
+            <div class="container">
+                <div class="text-center" style="margin-bottom: 60px;">
+                    <h2 class="section-title">Use AuditEase When...</h2>
+                    <p class="section-subtitle">Turns panic into process for specific trigger events.</p>
+                </div>
+                
+                <div class="use-case-grid">
+                    <div class="use-case-card">
+                        <i class="fa-solid fa-envelope use-case-icon"></i>
+                        <h4 class="font-bold">Security Questionnaire</h4>
+                        <p class="text-muted text-sm mt-2">A big customer just asked "Do you have SOC2?" and you need to look credible fast.</p>
+                    </div>
+                    <div class="use-case-card">
+                        <i class="fa-solid fa-calendar-check use-case-icon"></i>
+                        <h4 class="font-bold">Auditor Request</h4>
+                        <p class="text-muted text-sm mt-2">"Please provide evidence of encryption as of March 31st."</p>
+                    </div>
+                    <div class="use-case-card">
+                        <i class="fa-solid fa-users-rectangle use-case-icon"></i>
+                        <h4 class="font-bold">Board Update</h4>
+                        <p class="text-muted text-sm mt-2">You need to show security maturity progress without hiring a full-time CISO.</p>
+                    </div>
+                    <div class="use-case-card">
+                        <i class="fa-solid fa-stopwatch use-case-icon"></i>
+                        <h4 class="font-bold">Pre-Vanta/Drata</h4>
+                        <p class="text-muted text-sm mt-2">You are too early for a $20k/year tool but too big for manual screenshots.</p>
+                    </div>
+                </div>
+
+                <div class="scope-box">
+                    <div class="flex justify-between items-center" style="flex-wrap:wrap; gap:20px;">
+                        <div>
+                            <h3 class="font-bold text-lg">What We Support (v1)</h3>
+                            <p class="text-muted text-sm">We intentionally started narrow.</p>
+                        </div>
+                        <div class="scope-list">
+                            <div class="scope-item"><i class="fa-solid fa-check text-success"></i> SOC 2 Type I</div>
+                            <div class="scope-item"><i class="fa-brands fa-aws text-warning"></i> AWS Infrastructure</div>
+                            <div class="scope-item"><i class="fa-brands fa-github text-primary"></i> GitHub</div>
+                            <div class="scope-item"><i class="fa-solid fa-lock text-success"></i> Baseline Security</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <section class="section-padding" id="features" style="background: rgba(255,255,255,0.02);">
+            <div class="container">
+                <div class="feature-row">
+                    <div class="feature-text">
+                        <span class="feature-tag">Evidence is the Product</span>
+                        <h2 class="section-title">Share Proof, Not Dashboards.</h2>
+                        <p class="text-muted" style="margin-bottom: 24px; font-size: 1.1rem;">
+                            Executives, boards, and auditors don’t want to log into your tools. They want PDFs, spreadsheets, and clear pass/fail answers. We optimize for what leaves the system.
+                        </p>
+                        <ul class="check-list">
+                            <li><i class="fa-solid fa-check-circle"></i> Immutable SHA-256 Hashed Snapshots</li>
+                            <li><i class="fa-solid fa-check-circle"></i> Board-ready PDF Reports</li>
+                            <li><i class="fa-solid fa-check-circle"></i> Redact sensitive details automatically</li>
+                        </ul>
+                    </div>
+                    <div class="feature-image-card">
+                        <div style="background: #020617; padding: 20px; border-radius: 8px; font-family: monospace; font-size: 0.8rem; color: #a5b4fc;">
+                            <div style="color: #64748b;">// Evidence Export: SOC2_Type1_Final.pdf</div>
+                            <br>
+                            Status: <span style="color: #10b981">GENERATED</span><br>
+                            Hash: e3b0c44298fc1c149afbf4c8996fb92427<br>
+                            Recipient: external-auditor@firm.com<br>
+                            Expires: 72 hours<br>
+                            <br>
+                            <span style="background: #3b82f6; color: white; padding: 2px 6px; border-radius: 4px;">Download Now</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="feature-row reverse">
+                    <div class="feature-text">
+                        <span class="feature-tag">Risk Management</span>
+                        <h2 class="section-title">Handle Exceptions Like an Adult.</h2>
+                        <p class="text-muted" style="margin-bottom: 24px; font-size: 1.1rem;">
+                            Real infrastructure isn't perfect. Document exceptions, set expiration dates, and keep your score accurate without cheating. "We know about it" is different from "We documented it."
+                        </p>
+                        <ul class="check-list">
+                            <li><i class="fa-solid fa-check-circle"></i> Formal Risk Acceptance Workflow</li>
+                            <li><i class="fa-solid fa-check-circle"></i> Auto-expiry reminders for waivers</li>
+                            <li><i class="fa-solid fa-check-circle"></i> Audit trail for who accepted the risk</li>
+                        </ul>
+                    </div>
+                    <div class="feature-image-card">
+                        <div style="text-align:center; padding: 40px;">
+                            <div class="btn btn-secondary" style="border-color: #f59e0b; color: #f59e0b; margin-bottom: 20px;">
+                                <i class="fa-solid fa-triangle-exclamation"></i> Risk Accepted
+                            </div>
+                            <p class="text-muted text-sm">Reason: "This is a honeypot server"</p>
+                            <p class="text-muted text-xs">Approved by: J. Doe on Oct 12</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section-padding" id="faq">
+            <div class="container">
+                <div class="text-center">
+                    <h2 class="section-title">Let’s Address the Obvious</h2>
+                    <p class="section-subtitle">Real questions. Honest answers. No sales fluff.</p>
+                </div>
+                
+                <div class="faq-grid" style="margin-bottom: 80px;">
+                    <div class="faq-card">
+                        <div class="faq-question">"Isn’t this what other compliance tools already do?"</div>
+                        <div class="faq-answer">Short answer: They can. Real answer: They’re built to run compliance programs. We’re built to produce audit-ready proof. If you want continuous monitoring year-round, use them. If you want clean answers when someone asks hard questions, use us.</div>
+                    </div>
+                    <div class="faq-card">
+                        <div class="faq-question">"Why wouldn’t I just use a bigger platform?"</div>
+                        <div class="faq-answer">Bigger platforms assume you're ready to commit long-term and configure dozens of controls. AuditEase assumes you need results now for *this* audit or board meeting, and you don't want another system to babysit.</div>
+                    </div>
+                    <div class="faq-card">
+                        <div class="faq-question">"What if our infrastructure isn’t perfect?"</div>
+                        <div class="faq-answer">Then you’re normal. AuditEase lets you document known risks, provide business justification, and accept them formally. Auditors don’t expect perfection; they expect awareness and documentation.</div>
+                    </div>
+                    <div class="faq-card">
+                        <div class="faq-question">"What happens if we outgrow this?"</div>
+                        <div class="faq-answer">Then we did our job. We get you audit-ready and give you defensible proof. If you later adopt a larger OS, your historical evidence stands. No lock-in. No hostage situation.</div>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+                    <div class="anti-persona-section">
+                        <h3 class="font-bold text-danger mb-2" style="margin-bottom:15px;">Who This Is NOT For</h3>
+                        <ul class="check-list">
+                            <li><i class="fa-solid fa-xmark text-danger"></i> Companies with full-time GRC teams</li>
+                            <li><i class="fa-solid fa-xmark text-danger"></i> People who want always-on monitoring</li>
+                            <li><i class="fa-solid fa-xmark text-danger"></i> Teams who enjoy maintaining compliance tools</li>
+                        </ul>
+                        <p class="text-muted text-sm mt-2" style="margin-top:20px;">AuditEase is for teams who need clean, defensible proof — fast.</p>
+                    </div>
+
+                    <div class="security-section">
+                        <h3 class="font-bold text-success mb-2" style="margin-bottom:15px;">Security, By Default</h3>
+                        <ul class="check-list">
+                            <li><i class="fa-solid fa-shield-halved text-success"></i> Encrypted credentials at rest (Fernet)</li>
+                            <li><i class="fa-solid fa-shield-halved text-success"></i> Least-privilege read-only integrations</li>
+                            <li><i class="fa-solid fa-shield-halved text-success"></i> Immutable evidence storage</li>
+                        </ul>
+                        <p class="text-muted text-sm mt-2" style="margin-top:20px;">We assume you don't want to expose internal details just to prove compliance.</p>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <section class="section-padding" id="pricing">
+            <div class="container">
+                <div class="text-center">
+                    <h2 class="section-title">Transparent Pricing</h2>
+                    <p class="section-subtitle">Start for free. Upgrade when you need to pass an audit.</p>
+                    
+                    <div class="pricing-toggle">
+                        <span class="text-muted font-bold">Monthly</span>
+                        <label class="switch">
+                            <input type="checkbox">
+                            <span class="slider"></span>
+                        </label>
+                        <span class="text-main font-bold">Yearly <span class="badge badge-success">-20%</span></span>
+                    </div>
+                </div>
+
+                <div class="pricing-grid">
+                    <div class="pricing-card">
+                        <h3 class="font-bold" style="font-size: 1.5rem;">Starter</h3>
+                        <p class="text-muted">For side projects and small teams.</p>
+                        <div class="price">$0<span>/mo</span></div>
+                        <button class="btn btn-secondary" style="justify-content: center; margin-bottom: 24px;" onclick="router.navigate('auth')">Start Free</button>
+                        <ul class="check-list">
+                            <li><i class="fa-solid fa-check"></i> 3 Day Audit History</li>
+                            <li><i class="fa-solid fa-check"></i> Basic GitHub Scanning</li>
+                            <li><i class="fa-solid fa-check"></i> Community Support</li>
+                        </ul>
+                    </div>
+
+                    <div class="pricing-card popular">
+                        <div class="pop-badge">MOST POPULAR</div>
+                        <h3 class="font-bold" style="font-size: 1.5rem;">Pro</h3>
+                        <p class="text-muted">For growing startups seeking SOC2.</p>
+                        <div class="price">$49<span>/mo</span></div>
+                        <button class="btn btn-primary" style="justify-content: center; margin-bottom: 24px;" onclick="router.navigate('auth')">Get Started</button>
+                        <ul class="check-list">
+                            <li><i class="fa-solid fa-check"></i> Unlimited History</li>
+                            <li><i class="fa-solid fa-check"></i> PDF Reports & CSV Export</li>
+                            <li><i class="fa-solid fa-check"></i> Risk Acceptance Workflow</li>
+                            <li><i class="fa-solid fa-check"></i> Priority Email Support</li>
+                        </ul>
+                    </div>
+
+                    <div class="pricing-card">
+                        <h3 class="font-bold" style="font-size: 1.5rem;">Enterprise</h3>
+                        <p class="text-muted">For organizations with custom needs.</p>
+                        <div class="price">Custom</div>
+                        <button class="btn btn-secondary" style="justify-content: center; margin-bottom: 24px;">Contact Sales</button>
+                        <ul class="check-list">
+                            <li><i class="fa-solid fa-check"></i> SSO (SAML/OIDC)</li>
+                            <li><i class="fa-solid fa-check"></i> Dedicated Success Manager</li>
+                            <li><i class="fa-solid fa-check"></i> Custom Controls</li>
+                            <li><i class="fa-solid fa-check"></i> SLA Guarantees</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="cta-strip">
+            <div class="container">
+                <h2 style="font-size: 2rem; font-weight: 700; margin-bottom: 10px;">Run audits. Freeze evidence. Share proof. Move on.</h2>
+                <p class="text-muted" style="margin-bottom: 30px;">Stop treating compliance like a lifestyle.</p>
+                <button class="btn btn-primary" onclick="router.navigate('auth')">Start Your Audit</button>
+                <p class="text-muted text-xs" style="margin-top: 20px; opacity: 0.7;">*The tool shown below is a demo visualization. The main product includes advanced CLI and API capabilities.</p>
+            </div>
+        </div>
+
+        <footer>
+            <div class="container">
+                <div class="footer-grid">
+                    <div class="footer-col">
+                        <div class="flex items-center gap-2 font-bold text-lg" style="color: white; margin-bottom: 20px;">
+                            <i class="fa-solid fa-shield-halved text-primary"></i> AuditEase
+                        </div>
+                        <p class="text-muted" style="max-width: 300px;">
+                            The modern compliance platform for engineering teams. Secure, automated, and developer-friendly.
+                        </p>
+                    </div>
+                    <div class="footer-col">
+                        <h4>Product</h4>
+                        <a href="#">Features</a>
+                        <a href="#">Integrations</a>
+                        <a href="#">Pricing</a>
+                        <a href="#">Changelog</a>
+                    </div>
+                    <div class="footer-col">
+                        <h4>Resources</h4>
+                        <a href="#">Documentation</a>
+                        <a href="#">API Reference</a>
+                        <a href="#">Blog</a>
+                        <a href="#">Community</a>
+                    </div>
+                    <div class="footer-col">
+                        <h4>Company</h4>
+                        <a href="#">About</a>
+                        <a href="#">Careers</a>
+                        <a href="#">Legal</a>
+                        <a href="#">Contact</a>
+                    </div>
+                </div>
+                <div style="border-top: 1px solid var(--border); padding-top: 30px; display: flex; justify-content: space-between; color: var(--text-muted); font-size: 0.9rem;">
+                    <div>&copy; 2026 AuditEase Inc. All rights reserved.</div>
+                    <div class="flex gap-4">
+                        <a href="#"><i class="fa-brands fa-twitter"></i></a>
+                        <a href="#"><i class="fa-brands fa-github"></i></a>
+                        <a href="#"><i class="fa-brands fa-linkedin"></i></a>
+                    </div>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <div id="view-auth" class="hidden">
+        <div class="auth-card">
+            <div class="text-center" style="margin-bottom: 30px;">
+                <i class="fa-solid fa-shield-halved text-primary fa-3x" style="margin-bottom: 20px;"></i>
+                <h2>Welcome Back</h2>
+                <p class="text-muted">Enter your credentials to access the workspace.</p>
+            </div>
+            <form onsubmit="router.handleLogin(event)">
+                <div class="form-group">
+                    <label class="form-label">Work Email</label>
+                    <input type="email" class="form-input" value="admin@demo-inc.com">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Password</label>
+                    <input type="password" class="form-input" value="password123">
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">
+                    Sign In to Workspace
+                </button>
+                <p class="text-muted text-xs text-center" style="margin-top: 20px;">
+                    Protected by AuditEase SSO. <a href="#" onclick="router.navigate('landing')" class="text-primary">Back to Home</a>
+                </p>
+            </form>
+        </div>
+    </div>
+
+    <div id="view-dashboard" class="hidden">
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <i class="fa-solid fa-shield-halved text-primary"></i> AuditEase
+            </div>
+            
+            <div class="sidebar-menu">
+                <div class="menu-label">Platform</div>
+                <a class="menu-item active" onclick="router.switchTab('dash-home', this)">
+                    <i class="fa-solid fa-grid-2"></i> Dashboard
+                </a>
+                <a class="menu-item" onclick="router.switchTab('dash-audits', this)">
+                    <i class="fa-solid fa-list-check"></i> Audit Logs
+                </a>
+                <a class="menu-item" onclick="router.switchTab('dash-evidence', this)">
+                    <i class="fa-solid fa-camera"></i> Evidence
+                </a>
+                
+                <div class="menu-label" style="margin-top: 20px;">Configuration</div>
+                <a class="menu-item" onclick="router.switchTab('dash-settings', this)">
+                    <i class="fa-solid fa-plug"></i> Integrations
+                </a>
+                <a class="menu-item" onclick="router.switchTab('dash-settings', this)">
+                    <i class="fa-solid fa-users"></i> Team
+                </a>
+                <a class="menu-item" onclick="router.switchTab('dash-settings', this)">
+                    <i class="fa-solid fa-credit-card"></i> Billing
+                </a>
+            </div>
+
+            <div class="user-profile">
+                <div class="avatar">JD</div>
+                <div style="flex: 1;">
+                    <div class="text-sm font-bold">John Doe</div>
+                    <div class="text-xs text-muted">Admin • Pro Plan</div>
+                </div>
+                <button onclick="router.navigate('landing')" class="text-muted"><i class="fa-solid fa-right-from-bracket"></i></button>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            
+            <div class="demo-banner">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <strong>Demo Mode:</strong> This is a UI visualization. The actual AuditEase product supports more advanced features, CLI integration, and custom controls.
+            </div>
+
+            <div id="dash-home" class="dash-tab">
+                <div class="page-header">
+                    <div>
+                        <h2 class="page-title">Security Overview</h2>
+                        <p class="text-muted">Real-time compliance posture for <strong>Demo Inc.</strong></p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button class="btn btn-secondary"><i class="fa-solid fa-download"></i> Export PDF</button>
+                        <button class="btn btn-primary" onclick="app.runScan()"><i class="fa-solid fa-rotate"></i> Run Scan</button>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Overall Score</div>
+                        <div class="stat-value text-success">92%</div>
+                        <div class="stat-delta text-success"><i class="fa-solid fa-arrow-up"></i> 4% vs last week</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Passing Checks</div>
+                        <div class="stat-value">142</div>
+                        <div class="stat-delta text-muted">Out of 154 total</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Critical Issues</div>
+                        <div class="stat-value text-danger">3</div>
+                        <div class="stat-delta text-danger">Action Required</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Next Audit</div>
+                        <div class="stat-value" style="font-size: 1.5rem;">Oct 24</div>
+                        <div class="stat-delta text-primary">Automated Schedule</div>
+                    </div>
+                </div>
+
+                <div class="data-table-container">
+                    <div class="table-header">
+                        <h3 class="font-bold">Compliance Trends (30 Days)</h3>
+                    </div>
+                    <div style="padding: 24px;">
+                        <div class="chart-container" id="main-chart">
+                            </div>
+                    </div>
+                </div>
+
+                <div class="data-table-container">
+                    <div class="table-header">
+                        <h3 class="font-bold">Recent Failed Checks</h3>
+                        <button class="btn btn-secondary text-xs">View All</button>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Severity</th>
+                                <th>Check Name</th>
+                                <th>Resource</th>
+                                <th>Time</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="failed-checks-body">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="dash-audits" class="dash-tab hidden">
+                <div class="page-header">
+                    <h2 class="page-title">Audit Log History</h2>
+                    <input type="text" placeholder="Search logs..." class="form-input" style="width: 300px;">
+                </div>
+                <div class="data-table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Audit ID</th>
+                                <th>Triggered By</th>
+                                <th>Duration</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-log-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="dash-settings" class="dash-tab hidden">
+                <div class="page-header">
+                    <h2 class="page-title">Integrations</h2>
+                </div>
+                <div class="settings-card">
+                    <div class="flex items-center justify-between" style="margin-bottom: 20px;">
+                        <div class="flex items-center gap-4">
+                            <i class="fa-brands fa-github fa-2x"></i>
+                            <div>
+                                <h3 class="font-bold">GitHub Connection</h3>
+                                <p class="text-muted text-sm">Used for repository scanning.</p>
+                            </div>
+                        </div>
+                        <span class="badge badge-success">Connected</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Personal Access Token (Encrypted)</label>
+                        <div class="input-group">
+                            <input type="password" value="ghp_XXXXXXXXXXXXXXXXXXXXXXXX" disabled class="form-input">
+                            <button class="btn btn-secondary">Rotate</button>
+                        </div>
+                    </div>
+                    <hr style="border-color: var(--border); margin: 24px 0;">
+                    
+                    <div class="flex items-center justify-between" style="margin-bottom: 20px;">
+                        <div class="flex items-center gap-4">
+                            <i class="fa-brands fa-aws fa-2x"></i>
+                            <div>
+                                <h3 class="font-bold">AWS Cloud</h3>
+                                <p class="text-muted text-sm">Infrastructure scanning.</p>
+                            </div>
+                        </div>
+                        <button class="btn btn-secondary">Connect</button>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <div id="toast" class="toast">
+        <i class="fa-solid fa-circle-check text-success"></i>
+        <span id="toast-msg">Operation successful</span>
+    </div>
+
+    <script>
+        /* =========================================
+           6. JAVASCRIPT LOGIC
+           ========================================= */
+        
+        // --- MOCK DATA GENERATOR ---
+        const mockData = {
+            audits: Array.from({length: 50}, (_, i) => ({
+                id: `AUD-${Math.floor(Math.random()*100000)}`,
+                status: Math.random() > 0.1 ? 'PASS' : 'FAIL',
+                user: ['System', 'John Doe', 'API'][Math.floor(Math.random()*3)],
+                duration: `${Math.floor(Math.random()*120)}s`,
+                date: new Date(Date.now() - (i * 86400000)).toLocaleDateString()
+            })),
+            failedChecks: [
+                { severity: 'CRITICAL', name: 'S3 Bucket Public Access', resource: 'prod-assets-bucket', time: '2 mins ago' },
+                { severity: 'HIGH', name: 'Root Account MFA Missing', resource: 'AWS Account 123', time: '1 hour ago' },
+                { severity: 'MEDIUM', name: 'RDS Encryption Disabled', resource: 'db-staging-01', time: '4 hours ago' },
+            ]
+        };
+
+        // --- ROUTER ---
+        const router = {
+            currentView: 'landing',
+            
+            navigate: function(viewId) {
+                // Hide all main views
+                ['view-landing', 'view-auth', 'view-dashboard'].forEach(id => {
+                    document.getElementById(id).classList.add('hidden');
+                });
+                
+                // Show target
+                document.getElementById(`view-${viewId}`).classList.remove('hidden');
+                this.currentView = viewId;
+                window.scrollTo(0,0);
+
+                if(viewId === 'dashboard') app.initDashboard();
+            },
+
+            handleLogin: function(e) {
+                e.preventDefault();
+                // Simulate network request
+                const btn = e.target.querySelector('button');
+                const originalText = btn.innerText;
+                btn.innerText = "Authenticating...";
+                btn.style.opacity = "0.7";
+                
+                setTimeout(() => {
+                    btn.innerText = originalText;
+                    btn.style.opacity = "1";
+                    this.navigate('dashboard');
+                    app.showToast("Welcome back, John!");
+                }, 1500);
+            },
+
+            switchTab: function(tabId, element) {
+                // Handle Sidebar active state
+                document.querySelectorAll('.menu-item').forEach(el => el.classList.remove('active'));
+                element.classList.add('active');
+
+                // Handle Tab visibility
+                document.querySelectorAll('.dash-tab').forEach(el => el.classList.add('hidden'));
+                document.getElementById(tabId).classList.remove('hidden');
+            }
+        };
+
+        // --- APPLICATION LOGIC ---
+        const app = {
+            initDashboard: function() {
+                this.renderCharts();
+                this.renderTables();
+            },
+
+            renderCharts: function() {
+                const container = document.getElementById('main-chart');
+                if(!container) return;
+                container.innerHTML = '';
+                // Generate 30 days of data bars
+                for(let i=0; i<30; i++) {
+                    const height = 40 + Math.random() * 60; // 40-100%
+                    const bar = document.createElement('div');
+                    bar.className = 'chart-bar';
+                    bar.style.height = '0%';
+                    // Animate height
+                    setTimeout(() => bar.style.height = `${height}%`, i * 20);
+                    container.appendChild(bar);
+                }
+            },
+
+            renderTables: function() {
+                // Render Failed Checks
+                const failedBody = document.getElementById('failed-checks-body');
+                if(failedBody) {
+                    failedBody.innerHTML = mockData.failedChecks.map(check => `
+                        <tr>
+                            <td><span class="badge badge-${check.severity === 'CRITICAL' ? 'danger' : 'warning'}">${check.severity}</span></td>
+                            <td class="font-bold">${check.name}</td>
+                            <td class="text-muted text-sm">${check.resource}</td>
+                            <td class="text-muted text-sm">${check.time}</td>
+                            <td><button class="btn btn-secondary text-xs" style="padding:4px 8px;">Fix</button></td>
+                        </tr>
+                    `).join('');
+                }
+
+                // Render Audit Logs
+                const auditBody = document.getElementById('audit-log-body');
+                if(auditBody) {
+                    auditBody.innerHTML = mockData.audits.map(audit => `
+                        <tr>
+                            <td><span class="badge badge-${audit.status === 'PASS' ? 'success' : 'danger'}">${audit.status}</span></td>
+                            <td class="font-bold text-sm">${audit.id}</td>
+                            <td><div class="flex items-center gap-2"><div class="avatar" style="width:24px;height:24px;font-size:10px;">${audit.user[0]}</div> ${audit.user}</div></td>
+                            <td class="text-muted text-sm">${audit.duration}</td>
+                            <td class="text-muted text-sm">${audit.date}</td>
+                        </tr>
+                    `).join('');
+                }
+            },
+
+            runScan: function() {
+                this.showToast("Initiating global infrastructure scan...");
+                // Simulate scan visual update
+                const status = document.querySelector('.stat-delta.text-primary');
+                if(status) {
+                    status.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Scanning now...';
+                    setTimeout(() => {
+                        this.showToast("Scan Complete: 2 New Issues Found");
+                        status.innerHTML = 'Just now';
+                    }, 3000);
+                }
+            },
+
+            showToast: function(msg) {
+                const toast = document.getElementById('toast');
+                document.getElementById('toast-msg').innerText = msg;
+                toast.classList.add('show');
+                setTimeout(() => toast.classList.remove('show'), 3000);
+            }
+        };
+
+        // --- TYPEWRITER EFFECT (Landing) ---
+        const terminalText = [
+            { t: "> audit-ease run --env=production", c: "text-main" },
+            { t: "✓ Connecting to AWS (us-east-1)... Connected", c: "text-success" },
+            { t: "✓ Analyzing Security Groups... Done", c: "text-success" },
+            { t: "⚠ Finding: Port 22 Open on 10.0.0.5", c: "text-warning" },
+            { t: "✓ Snapshotting Evidence... Saved", c: "text-success" },
+            { t: "Generating PDF Report...", c: "text-muted" },
+            { t: "> Done. Score: 92%", c: "text-primary font-bold" }
+        ];
+
+        function runTypewriter() {
+            const container = document.getElementById('landing-terminal');
+            if(!container) return;
+            container.innerHTML = '';
+            let lineIndex = 0;
+
+            function nextLine() {
+                if(lineIndex >= terminalText.length) {
+                    setTimeout(runTypewriter, 5000);
+                    return;
+                }
+                const line = document.createElement('div');
+                line.className = `cmd-line ${terminalText[lineIndex].c}`;
+                line.innerText = terminalText[lineIndex].t;
+                container.appendChild(line);
+                lineIndex++;
+                setTimeout(nextLine, 600);
+            }
+            nextLine();
+        }
+
+        // Init
+        window.addEventListener('load', () => {
+            runTypewriter();
+        });
+
+    </script>
+</body>
+</html>

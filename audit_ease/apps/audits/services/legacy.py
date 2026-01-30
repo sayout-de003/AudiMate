@@ -137,4 +137,8 @@ def create_audit_snapshot(audit_id: str, user, name: str = None) -> 'AuditSnapsh
         created_by=user
     )
     
+    # FREEZE/LOCK the audit
+    audit.status = 'FROZEN'
+    audit.save(update_fields=['status'])
+    
     return snapshot

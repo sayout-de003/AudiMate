@@ -1,6 +1,7 @@
 import logging
 from celery import shared_task
 from django.utils import timezone
+from django.conf import settings
 from github import Github
 
 from apps.audits.models import Audit, Evidence, Question, AuditSnapshot, ScanHistory, RiskAcceptanceException
@@ -676,15 +677,20 @@ def run_audit_task(self, audit_id):
             # --- CONTINUOUS COMPLIANCE LOGIC ---
             
             # 1. Calculate Score (Risk Accepted = Compliant i.e., Pass)
-            # Evidence status: PASS, FAIL, RISK_ACCEPTED
+            # Formula: 100 - (15 * Critical Failures) - (10 * High Failures)
+            critical_fails = Evidence.objects.filter(audit=audit, status='FAIL', question__severity='CRITICAL').count()
+            high_fails = Evidence.objects.filter(audit=audit, status='FAIL', question__severity='HIGH').count()
+            
+            penalty = (15 * critical_fails) + (10 * high_fails)
+            score = max(0, 100 - penalty)
+            
+            # Helper for History
             total_ev = Evidence.objects.filter(audit=audit).count()
             active_failures = Evidence.objects.filter(audit=audit, status='FAIL').count()
             
-            score = 0
-            if total_ev > 0:
-                score = int(((total_ev - active_failures) / total_ev) * 100)
-            
             audit.score = score
+            audit.status = 'COMPLETED'
+            
             audit.save()
             
             # 2. History Tracking
@@ -721,27 +727,53 @@ def run_audit_task(self, audit_id):
             )
 
             # 4. Regression Detection (Alerting)
+            # 4. Regression & Remediation Detection (The "Diffing" Engine)
             # Get PREVIOUS snapshot from ANY previous audit for this org
             prev_snapshot = AuditSnapshot.objects.filter(
                 organization=audit.organization
             ).exclude(id=current_snapshot.id).order_by('-created_at').first()
 
             regressions = []
+            remediations = []
+            
             if prev_snapshot:
+                 # Map: Key -> Status
                  prev_evidence = { e['question__key']: e['status'] for e in prev_snapshot.data.get('evidence', []) }
                  
                  for ev in evidence_data:
                      key = ev['question__key']
                      current_status = ev['status']
                      prev_status = prev_evidence.get(key, 'PASS') # If new check, assume PASS previously?
+                     repo_name = ev['raw_data'].get('repo_name', 'Global')
                      
-                     # Alert if FAIL and previously NOT FAIL
+                     # Regression: PASSED -> FAILED
                      if current_status == 'FAIL' and prev_status != 'FAIL':
                           regressions.append({
                               'check': key,
-                              'resource': ev['raw_data'].get('repo_name', 'Global')
+                              'resource': repo_name,
+                              'status': 'REGRESSION',
+                              'details': f"Check {key} failed on {repo_name} (Prev: {prev_status})"
                           })
+                    
+                     # Remediation: FAILED -> PASSED (or RISK_ACCEPTED)
+                     if current_status in ['PASS', 'RISK_ACCEPTED'] and prev_status == 'FAIL':
+                         remediations.append({
+                             'check': key,
+                             'resource': repo_name,
+                             'status': 'FIXED',
+                             'details': f"Check {key} passed on {repo_name}"
+                         })
             
+            # Update Snapshot Data with Diff
+            snapshot_data['diff'] = {
+                'regressions': regressions,
+                'remediations': remediations,
+                'summary': f"Found {len(regressions)} regressions and {len(remediations)} fixes."
+            }
+            # Save the updated data to the snapshot
+            current_snapshot.data = snapshot_data
+            current_snapshot.save()
+
             if regressions:
                  alert_payload = {
                      "actions": [{
@@ -750,11 +782,21 @@ def run_audit_task(self, audit_id):
                          "payload": {
                              "priority": "HIGH",
                              "message": f"🚨 {len(regressions)} New Security Regressions Detected.",
-                             "details": regressions
+                             "details": regressions,
+                             "actions": [
+                                 {
+                                     "type": "button",
+                                     "text": "Fix this",
+                                     "url": f"{settings.FRONTEND_URL}/audits/{audit.id}"
+                                 }
+                             ]
                          }
                      }]
                  }
                  logger.info(f"ALERT TRIGGERED: {json.dumps(alert_payload)}")
+            
+            if remediations:
+                logger.info(f"PROGRESS: {len(remediations)} previously failing checks are now fixed.")
 
             logger.info(f"Audit {audit_id} Completed. Score: {score}")
             

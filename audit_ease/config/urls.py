@@ -1,6 +1,6 @@
-# config/urls.py
 from django.contrib import admin
 from django.urls import path, include
+from django.views.generic import TemplateView
 from apps.users.views_frontend import UserProfileView
 from rest_framework.routers import SimpleRouter, DefaultRouter
 
@@ -62,6 +62,7 @@ urlpatterns = [
     # Frontend Views
     path("settings/audit-log/", include("apps.organizations.urls_frontend")),
     path("settings/profile/", UserProfileView.as_view(), name="user-profile"),
+    path("privacy-policy/", TemplateView.as_view(template_name="legal/privacy_policy.html"), name="privacy_policy"),
 ]
 
 

@@ -13,6 +13,7 @@ import { Settings } from './pages/Settings';
 import { Integrations } from './pages/Integrations';
 import { Profile } from './pages/Profile';
 import { Billing } from './pages/Billing';
+import { BillingSuccess } from './pages/BillingSuccess';
 import { GitHubCallback } from './pages/GitHubCallback';
 import { AuthLayout } from './layouts/AuthLayout';
 import { AppLayout } from './layouts/AppLayout';
@@ -90,6 +91,7 @@ export default function App() {
               <Route path="/integrations/github/callback" element={<GitHubCallback />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/billing" element={<Billing />} />
+              <Route path="/billing/success" element={<BillingSuccess />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />

@@ -12,7 +12,8 @@ class GitHubOAuth:
         self.client_secret = getattr(settings, 'GITHUB_CLIENT_SECRET', '')
         # Scopes: 'repo' gives access to private repos, 'read:org' for org membership
         # 'read:user' is needed to get the authenticated user's profile
-        self.scope = "repo read:org read:user"
+        # 'checks:write' and 'statuses:write' are needed for the Gatekeeper logic
+        self.scope = "repo read:org read:user checks:write statuses:write"
         
         if not self.client_id or not self.client_secret:
             raise ValueError(

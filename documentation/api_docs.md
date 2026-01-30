@@ -121,6 +121,7 @@ The API implements throttling to prevent abuse.
 *   **Audit Detail**: `GET /api/v1/audits/{id}/`
 *   **Export CSV**: `GET /api/v1/audits/{id}/export/csv/`
 *   **Export Excel**: `GET /api/v1/audits/{id}/export/xlsx/`
+*   **Export Preview**: `GET /api/v1/audits/{id}/export/preview/`
 
 #### 2. Evidence & Findings
 *   **List Evidence**: `GET /api/v1/audits/{id}/evidence/`
@@ -128,15 +129,25 @@ The API implements throttling to prevent abuse.
 *   **Upload Evidence**: `POST /api/v1/audits/evidence/upload/`
 *   **Milestone**: `POST /api/v1/audits/evidence/milestone/`
 *   **Finalize Session**: `POST /api/v1/audits/session/{pk}/finalize/`
+*   **Upload Screenshot**: `POST /api/v1/audits/evidence/{pk}/upload_screenshot/`
 
 #### 3. Snapshots (Immutable Records)
 *   **List Snapshots**: `GET /api/v1/audits/{id}/snapshots/`
 *   **Create Snapshot**: `POST /api/v1/audits/{id}/snapshots/create/`
 *   **Snapshot Detail**: `GET /api/v1/audits/snapshots/{pk}/`
+*   **Pin Snapshot**: `POST /api/v1/audits/snapshots/{pk}/pin/`
+*   **Share Snapshot**: `POST /api/v1/audits/snapshots/{pk}/share/`
 
 #### 4. Dashboard
 *   **Summary**: `GET /api/v1/audits/dashboard/summary/`
 *   **Stats**: `GET /api/v1/audits/dashboard/stats/`
+
+#### 5. Risk Acceptance
+*   **Risk Accept**: `POST /api/v1/audits/risk-accept/`
+    *   **Input**: `{ "check_id": "...", "reason": "...", "resource_identifier": "..." }`
+
+#### 6. Public Reports
+*   **View Report**: `GET /api/v1/audits/public/reports/{token}/` (No Auth)
 
 ---
 

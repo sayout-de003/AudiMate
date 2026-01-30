@@ -19,6 +19,18 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)  # For Admin panel access
     is_active = models.BooleanField(default=True)  # Soft delete flag
     email_verified = models.BooleanField(default=False)  # Email OTP verification status
+    
+    # Feature Gating & Billing
+    stripe_subscription_status = models.CharField(
+        max_length=20, 
+        default='free',
+        help_text="Current Stripe status (active, past_due, canceled, free)"
+    )
+    is_comped_vip = models.BooleanField(
+        default=False,
+        help_text="Super Admin Override: Grants full Pro access regardless of Stripe status."
+    )
+
     date_joined = models.DateTimeField(auto_now_add=True)
 
     USERNAME_FIELD = 'email'
@@ -33,6 +45,18 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+
+    @property
+    def has_pro_access(self):
+        """
+        Determines if the user has access to Pro features.
+        Priority: 
+        1. VIP Override (is_comped_vip)
+        2. Stripe Status (active)
+        """
+        if self.is_comped_vip:
+            return True
+        return self.stripe_subscription_status == 'active'
 
     def get_organization(self):
         """

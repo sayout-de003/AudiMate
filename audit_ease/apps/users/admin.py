@@ -21,6 +21,8 @@ class UserAdmin(BaseUserAdmin):
         'is_active_badge',
         'is_staff',
         'is_superuser',
+        'is_comped_vip',
+        'stripe_subscription_status',
         'organization_count',
         'date_joined'
     )
@@ -28,6 +30,8 @@ class UserAdmin(BaseUserAdmin):
         'is_active',
         'is_staff',
         'is_superuser',
+        'is_comped_vip',
+        'stripe_subscription_status',
         'email_verified',
         'date_joined',
         'last_login'
@@ -58,6 +62,10 @@ class UserAdmin(BaseUserAdmin):
         ('Permissions', {
             'fields': ('is_staff', 'is_superuser', 'groups', 'user_permissions'),
             'classes': ('collapse',)
+        }),
+        ('Billing & Access', {
+            'fields': ('is_comped_vip', 'stripe_subscription_status'),
+            'description': 'Manage billing status and overrides'
         }),
         ('Organizations', {
             'fields': ('organization_list',),
@@ -152,6 +160,8 @@ class UserAdmin(BaseUserAdmin):
         'mark_as_unverified',
         'activate_users',
         'deactivate_users',
+        'grant_vip_access',
+        'revoke_vip_access',
         'delete_malicious_users'
     ]
     
@@ -183,6 +193,18 @@ class UserAdmin(BaseUserAdmin):
             f'{updated} users deactivated. Superusers were excluded for safety.'
         )
     deactivate_users.short_description = 'Deactivate selected users'
+    
+    def grant_vip_access(self, request, queryset):
+        """Grant VIP Pro access to selected users (Overrides Stripe)."""
+        updated = queryset.update(is_comped_vip=True)
+        self.message_user(request, f'{updated} users granted VIP Pro access.')
+    grant_vip_access.short_description = 'Grant VIP Pro Access'
+
+    def revoke_vip_access(self, request, queryset):
+        """Revoke VIP Pro access."""
+        updated = queryset.update(is_comped_vip=False)
+        self.message_user(request, f'{updated} users revoked VIP access.')
+    revoke_vip_access.short_description = 'Revoke VIP Pro Access'
     
     def delete_malicious_users(self, request, queryset):
         """Hard delete malicious users (DANGEROUS - requires confirmation)."""

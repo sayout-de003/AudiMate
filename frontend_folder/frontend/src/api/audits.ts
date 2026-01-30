@@ -2,7 +2,7 @@ import { api } from './client';
 
 export interface Audit {
     id: string;
-    status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+    status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'FROZEN';
     created_at: string;
     completed_at?: string;
     pass_rate?: number;
@@ -100,8 +100,8 @@ export const auditsApi = {
         return data;
     },
 
-    createSnapshot: async (auditId: string) => {
-        const { data } = await api.post(`/audits/${auditId}/snapshots/create/`);
+    createSnapshot: async (auditId: string, payload?: { name: string; description?: string }) => {
+        const { data } = await api.post(`/audits/${auditId}/snapshots/create/`, payload);
         return data;
     },
 

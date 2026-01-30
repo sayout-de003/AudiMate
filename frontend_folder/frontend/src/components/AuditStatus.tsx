@@ -1,5 +1,5 @@
 import { cn } from '../lib/utils';
-import { CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Loader2, Lock } from 'lucide-react';
 
 export function AuditStatus({ status }: { status: string }) {
     const styles = {
@@ -7,6 +7,7 @@ export function AuditStatus({ status }: { status: string }) {
         RUNNING: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
         COMPLETED: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
         FAILED: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+        FROZEN: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
     };
 
     const icons = {
@@ -14,6 +15,7 @@ export function AuditStatus({ status }: { status: string }) {
         RUNNING: Loader2,
         COMPLETED: CheckCircle,
         FAILED: XCircle,
+        FROZEN: Lock,
     };
 
     const Icon = icons[status as keyof typeof icons] || Clock;

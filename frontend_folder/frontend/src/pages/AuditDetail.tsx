@@ -41,12 +41,26 @@ export function AuditDetail() {
         }
     });
 
+    const [isSnapshotModalOpen, setIsSnapshotModalOpen] = useState(false);
+    const [snapshotTitle, setSnapshotTitle] = useState('');
+    const [snapshotDescription, setSnapshotDescription] = useState('');
+
     const createSnapshotMutation = useMutation({
-        mutationFn: () => auditsApi.createSnapshot(id!),
+        mutationFn: () => auditsApi.createSnapshot(id!, { name: snapshotTitle, description: snapshotDescription }), // Updated to pass data
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['audit-snapshots', id] });
+            queryClient.invalidateQueries({ queryKey: ['audit', id] }); // Refresh audit status
+            setIsSnapshotModalOpen(false);
+            setSnapshotTitle('');
+            setSnapshotDescription('');
         }
     });
+
+    const handleSnapshotSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        createSnapshotMutation.mutate();
+    };
+
 
     const handleExportCSV = async () => {
         const blob = await auditsApi.exportCSV(id!);
@@ -82,10 +96,74 @@ export function AuditDetail() {
     if (!audit) return <div>Audit not found</div>;
 
     const failureCount = evidence?.filter(e => e.status === 'FAIL').length || 0;
+    const isFrozen = audit.status === 'FROZEN';
     const isCompleted = audit.status === 'COMPLETED';
+    const canSnapshot = isCompleted; // Only allow snapshot if audit checks are done (COMPLETED)
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-500">
+        <div className="space-y-8 animate-in fade-in duration-500 relative">
+            {/* Snapshot Modal */}
+            {isSnapshotModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                    <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl dark:bg-gray-800">
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Create Audit Snapshot</h2>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                            This will <strong>freeze</strong> the current audit state. You will not be able to upload new evidence or modify this audit session after creating a snapshot.
+                        </p>
+
+                        <form onSubmit={handleSnapshotSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    Snapshot Title
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={snapshotTitle}
+                                    onChange={(e) => setSnapshotTitle(e.target.value)}
+                                    placeholder="e.g., Q1 Compliance Final"
+                                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    Description (Optional)
+                                </label>
+                                <textarea
+                                    value={snapshotDescription}
+                                    onChange={(e) => setSnapshotDescription(e.target.value)}
+                                    placeholder="Additional context..."
+                                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                                    rows={3}
+                                />
+                            </div>
+
+                            <div className="flex justify-end space-x-3 mt-6">
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    onClick={() => setIsSnapshotModalOpen(false)}
+                                    disabled={createSnapshotMutation.isPending}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    type="submit"
+                                    disabled={createSnapshotMutation.isPending}
+                                    className="bg-indigo-600 text-white hover:bg-indigo-700"
+                                >
+                                    {createSnapshotMutation.isPending ? (
+                                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Freezing...</>
+                                    ) : (
+                                        <><Lock className="mr-2 h-4 w-4" /> Finalize Snapshot</>
+                                    )}
+                                </Button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
             {/* Header */}
             <div className="flex items-center space-x-4">
                 <Link to="/audits">
@@ -129,6 +207,17 @@ export function AuditDetail() {
                     </Button>
                 </div>
             </div>
+
+            {/* Frozen Banner */}
+            {isFrozen && (
+                <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 flex items-center text-blue-800 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-300">
+                    <Lock className="h-5 w-5 mr-3" />
+                    <div>
+                        <h4 className="font-semibold">Audit Locked</h4>
+                        <p className="text-sm">This audit has been finalized and snapshotted. It is now read-only.</p>
+                    </div>
+                </div>
+            )}
 
             {/* Stats Cards */}
             <div className="grid gap-6 md:grid-cols-3">
@@ -199,7 +288,7 @@ export function AuditDetail() {
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">
                         <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Evidence & Findings</h2>
-                        {isCompleted && (
+                        {isFrozen && (
                             <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
                                 <Lock className="h-4 w-4 mr-2" />
                                 Session Frozen
@@ -214,7 +303,7 @@ export function AuditDetail() {
                 <div className="space-y-6">
                     <div className="flex items-center justify-between">
                         <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Evidence Management</h2>
-                        {!isCompleted && (
+                        {!isFrozen && (
                             <div className="flex items-center space-x-2">
                                 <input
                                     type="file"
@@ -252,17 +341,13 @@ export function AuditDetail() {
                 <div className="space-y-6">
                     <div className="flex items-center justify-between">
                         <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Audit Snapshots</h2>
-                        {!isCompleted && (
+                        {!isFrozen && canSnapshot && (
                             <Button
                                 size="sm"
-                                onClick={() => createSnapshotMutation.mutate()}
+                                onClick={() => setIsSnapshotModalOpen(true)}
                                 disabled={createSnapshotMutation.isPending}
                             >
-                                {createSnapshotMutation.isPending ? (
-                                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating...</>
-                                ) : (
-                                    <><Camera className="mr-2 h-4 w-4" /> Create Snapshot</>
-                                )}
+                                <Camera className="mr-2 h-4 w-4" /> Create Snapshot
                             </Button>
                         )}
                     </div>

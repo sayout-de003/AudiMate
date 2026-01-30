@@ -29,7 +29,7 @@ from .serializers import (
     EvidenceUploadSerializer,
     EvidenceMilestoneSerializer
 )
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import MultiPartParser, FormParser
 from apps.core.permissions import HasGeneralAccess, CheckTrialQuota
 from .services import create_audit_snapshot
 from apps.audits.services.stats_service import AuditStatsService
@@ -274,6 +274,13 @@ class AuditListView(APIView):
         audits = Audit.objects.filter(
             organization=organization
         ).select_related('organization', 'triggered_by').order_by('-created_at')
+        
+        # Feature Gating: Limit history for Free users
+        if not request.user.has_pro_access:
+            # We return only the last 3, but we might want to tell the frontend 
+            # that there are more so it can show a "Upgrade to see history" banner.
+            # CRO Directive: "Always limit the history... Show only last 3 rows"
+            audits = audits[:3]
         
         serializer = AuditSerializer(audits, many=True)
         return Response(
@@ -631,7 +638,7 @@ class EvidenceScreenshotUploadView(APIView):
     """
     authentication_classes = [JWTAuthentication]
     permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
-    parser_classes = [MultiPartParser]
+    parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, pk):
         organization = request.user.get_organization()
@@ -643,11 +650,11 @@ class EvidenceScreenshotUploadView(APIView):
             return Response({'error': 'Evidence not found'}, status=status.HTTP_404_NOT_FOUND)
             
         # IMMUTABILITY CHECK
-        # if evidence.audit.status == 'COMPLETED':
-        #      return Response(
-        #          {'error': "Session is frozen. Evidence chain is locked."},
-        #          status=status.HTTP_403_FORBIDDEN
-        #      )
+        if evidence.audit.status == 'FROZEN':
+             return Response(
+                 {'error': "Session is frozen. Evidence chain is locked."},
+                 status=status.HTTP_403_FORBIDDEN
+             )
 
         file_obj = request.FILES.get('file')
         if not file_obj:
@@ -686,8 +693,8 @@ class EvidenceCreateView(generics.CreateAPIView):
         audit = get_object_or_404(Audit, id=audit_id, organization=organization)
         
         # IMMUTABILITY CHECK
-        # if audit.status == 'COMPLETED':
-        #     raise ValidationError("Session is frozen. Evidence chain is locked.") # Strict compliance rule
+        if audit.status == 'FROZEN':
+            raise ValidationError("Session is frozen. Evidence chain is locked.") # Strict compliance rule
 
         # Trial Limit Check handled by CheckTrialQuota permission
         
@@ -720,11 +727,11 @@ class EvidenceUploadView(APIView):
              return Response({'error': 'Session not found or access denied.'}, status=status.HTTP_404_NOT_FOUND)
              
         # IMMUTABILITY CHECK
-        # if audit.status == 'COMPLETED':
-        #      return Response(
-        #          {'error': "Session is frozen. Evidence chain is locked."},
-        #          status=status.HTTP_403_FORBIDDEN
-        #      )
+        if audit.status == 'FROZEN':
+             return Response(
+                 {'error': "Session is frozen. Evidence chain is locked."},
+                 status=status.HTTP_403_FORBIDDEN
+             )
 
         # Create Evidence Artifact
         # We need to map the generic "upload" to our Evidence model.
@@ -798,11 +805,7 @@ class EvidenceMilestoneView(APIView):
             # We will append description to name or ignore for now as per existing model limits.
             
             return Response(
-                {
-                    'message': f"Milestone '{title}' created.",
-                    'milestone_id': snapshot.id,
-                    'timestamp': snapshot.created_at
-                },
+                AuditSnapshotSerializer(snapshot).data,
                 status=status.HTTP_201_CREATED
             )
         except Exception as e:
@@ -840,6 +843,7 @@ class RiskAcceptanceCreateView(APIView):
     POST /api/v1/audits/risk-accept/
     
     Create a risk acceptance exception for a specific check and resource.
+    Enforces justification quality (> 5 chars).
     """
     permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
     
@@ -850,14 +854,20 @@ class RiskAcceptanceCreateView(APIView):
                 return Response({'error': 'No Organization'}, status=400)
             
             check_id = request.data.get('check_id')
-            reason = request.data.get('reason')
+            reason = request.data.get('reason', '').strip()
             resource_identifier = request.data.get('resource_identifier') # Optional
             
-            if not check_id or not reason:
-                return Response({'error': 'check_id and reason are required'}, status=400)
+            if not check_id:
+                return Response({'error': 'check_id is required'}, status=400)
+            
+            # Validation: Justification Quality
+            if len(reason) < 5:
+                return Response(
+                    {'error': 'Justification must be at least 5 characters to meet audit standards.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
             # Create or Update Exception
-            # Use update_or_create to handle re-acceptance or updates
             exception, created = RiskAcceptanceException.objects.update_or_create(
                 organization=organization,
                 check_id=check_id,
@@ -869,11 +879,192 @@ class RiskAcceptanceCreateView(APIView):
                 }
             )
             
+            # --- RETROACTIVE UPDATE LOGIC ---
+            # 1. Update existing Evidence to RISK_ACCEPTED
+            evidence_updated_count = 0
+            
+            # Find matching Evidence for this check & resource in the organization
+            evidence_qs = Evidence.objects.filter(
+                audit__organization=organization,
+                question__key=check_id,
+                status='FAIL',
+                audit__status__in=['COMPLETED', 'RUNNING'] 
+            ).order_by('-created_at')
+            
+            latest_audit_to_update = None
+            
+            for ev in evidence_qs:
+                # Check Resource ID match
+                ev_repo = ev.raw_data.get('repo_name') if ev.raw_data else None
+                 
+                match = False
+                if not resource_identifier:
+                    match = True
+                elif resource_identifier == ev_repo:
+                    match = True
+                
+                if match:
+                    ev.status = 'RISK_ACCEPTED'
+                    ev.status_state = 'RISK_ACCEPTED'
+                    ev.comment = (ev.comment or "") + f" [Risk Accepted: {reason}]"
+                    ev.save()
+                    evidence_updated_count += 1
+                    
+                    if not latest_audit_to_update or ev.audit.created_at > latest_audit_to_update.created_at:
+                        latest_audit_to_update = ev.audit
+            
+            # 2. Recalculate Score for the latest affected audit
+            if latest_audit_to_update and latest_audit_to_update.status != 'FROZEN':
+                total_ev = Evidence.objects.filter(audit=latest_audit_to_update).count()
+                active_failures = Evidence.objects.filter(audit=latest_audit_to_update, status='FAIL').count()
+                
+                new_score = 0
+                if total_ev > 0:
+                    new_score = int(((total_ev - active_failures) / total_ev) * 100)
+                
+                latest_audit_to_update.score = new_score
+                latest_audit_to_update.save(update_fields=['score'])
+                
+                today = timezone.now().date()
+                ScanHistory.objects.filter(
+                    organization=organization, 
+                    date__date=today
+                ).update(
+                    score=new_score,
+                    total_fail=active_failures,
+                    total_pass=total_ev - active_failures
+                )
+
             return Response({
                 'message': f"Risk accepted for {check_id} on {resource_identifier or 'Global'}",
-                'id': exception.id
+                'id': exception.id,
+                'updated_count': evidence_updated_count,
+                'new_score': latest_audit_to_update.score if latest_audit_to_update else None
             }, status=status.HTTP_201_CREATED)
             
         except Exception as e:
             logger.exception(f"Risk Acceptance Failed: {e}")
             return Response({'error': str(e)}, status=500)
+
+class AuditSnapshotPinView(APIView):
+    """
+    POST /api/v1/audits/snapshots/{pk}/pin/
+    
+    Pin a snapshot to prevent deletion.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
+    
+    def post(self, request, pk):
+        organization = request.user.get_organization()
+        try:
+            snapshot = AuditSnapshot.objects.get(pk=pk, organization=organization)
+            snapshot.is_pinned = True
+            snapshot.save(update_fields=['is_pinned'])
+            return Response({'message': 'Snapshot pinned.', 'is_pinned': True})
+        except AuditSnapshot.DoesNotExist:
+            return Response({'error': 'Snapshot not found'}, status=status.HTTP_404_NOT_FOUND)
+
+class PublicLinkCreateView(APIView):
+    """
+    POST /api/v1/audits/snapshots/{pk}/share/
+    
+    Generate a secure public link for a snapshot.
+    Enforces "No PDF, No Link".
+    """
+    permission_classes = [permissions.IsAuthenticated, IsSameOrganization]
+    
+    def post(self, request, pk):
+        organization = request.user.get_organization()
+        try:
+            snapshot = AuditSnapshot.objects.get(pk=pk, organization=organization)
+        except AuditSnapshot.DoesNotExist:
+            return Response({'error': 'Snapshot not found.'}, status=status.HTTP_404_NOT_FOUND)
+            
+        # Rule: No PDF, No Link
+        if not snapshot.pdf_file:
+            # Trigger PDF generation if missing
+            from .tasks import generate_pdf_task
+            generate_pdf_task.delay(snapshot.audit.id)
+            
+            return Response({
+                'error': 'PDF Report not ready. Generation triggered. Please try again in moments.',
+                'code': 'PDF_NOT_READY'
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            # Create Link
+            from .models import PublicLink
+            link = PublicLink.objects.create(
+                snapshot=snapshot,
+                created_by=request.user,
+                expires_at=timezone.now() + timedelta(days=30)
+            )
+            
+            from .serializers import PublicLinkSerializer
+            return Response(PublicLinkSerializer(link).data, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            logger.error(f"Failed to create public link: {e}")
+            return Response({'error': 'Failed to generate link.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class PublicReportView(APIView):
+    """
+    GET /api/v1/audits/public/reports/{token}/
+    
+    Access a public audit report.
+    - No Auth required (Token is the auth).
+    - Redacted JSON output.
+    """
+    permission_classes = [permissions.AllowAny] # Open access
+    authentication_classes = [] # No auth required
+    
+    def get(self, request, token):
+        try:
+            from .models import PublicLink
+            link = PublicLink.objects.get(token=token)
+            
+            # Validation
+            if not link.is_active:
+                return Response({'error': 'Link is inactive.'}, status=status.HTTP_404_NOT_FOUND)
+            
+            if link.expires_at and link.expires_at < timezone.now():
+                return Response({'error': 'Link has expired.'}, status=status.HTTP_410_GONE)
+            
+            # Increment views
+            link.views_count += 1
+            link.save(update_fields=['views_count'])
+            
+            # Redaction Logic
+            snapshot_data = link.snapshot.data
+            evidence = snapshot_data.get('evidence', [])
+            
+            redacted_evidence = []
+            # Gather keys to fetch titles
+            keys = [e.get('question__key') for e in evidence if e.get('question__key')]
+            questions = {q.key: q.title for q in Question.objects.filter(key__in=keys)}
+
+            for ev in evidence:
+                rule_key = ev.get('question__key')
+                title = questions.get(rule_key, rule_key)
+                
+                # Rule: Show only Rule Name and Status
+                redacted_evidence.append({
+                    'rule': title,
+                    'status': ev.get('status')
+                })
+            
+            response_data = {
+                'report_name': link.snapshot.name,
+                'organization': link.snapshot.organization.name,
+                'generated_at': link.created_at,
+                'score': snapshot_data.get('score'),
+                'findings': redacted_evidence
+            }
+            
+            return Response(response_data, status=status.HTTP_200_OK)
+            
+        except PublicLink.DoesNotExist:
+             return Response({'error': 'Report not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"Public report access error: {e}")
+            return Response({'error': 'System Error'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

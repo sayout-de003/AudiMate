@@ -23,6 +23,9 @@ from .views import (
     SessionFinalizeView,
     EvidenceScreenshotUploadView,
     RiskAcceptanceCreateView,
+    AuditSnapshotPinView,
+    PublicLinkCreateView,
+    PublicReportView,
 )
 from .views_export import AuditExportCSVView, ExportAuditReportView, AuditExportPDFView, AuditExportPreviewView
 app_name = 'audits'
@@ -56,6 +59,11 @@ urlpatterns = [
     path('<uuid:audit_id>/snapshots/', AuditSnapshotListView.as_view(), name='audit-snapshot-list'),
     path('<uuid:audit_id>/snapshots/create/', AuditSnapshotCreateView.as_view(), name='audit-snapshot-create'),
     path('snapshots/<int:pk>/', AuditSnapshotDetailView.as_view(), name='audit-snapshot-detail'),
+    path('snapshots/<int:pk>/pin/', AuditSnapshotPinView.as_view(), name='audit-snapshot-pin'),
+    path('snapshots/<int:pk>/share/', PublicLinkCreateView.as_view(), name='audit-snapshot-share'),
+    
+    # Public Reports (Secure Access)
+    path('public/reports/<str:token>/', PublicReportView.as_view(), name='public-report-view'),
     
     # Evidence & Compliance Endpoints (New Terminology)
     path('evidence/upload/', EvidenceUploadView.as_view(), name='evidence-upload'),

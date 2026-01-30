@@ -35,6 +35,7 @@ class Audit(models.Model):
         ('RUNNING', 'Running'),
         ('COMPLETED', 'Completed'),
         ('FAILED', 'Failed'),
+        ('FROZEN', 'Frozen'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -77,11 +78,12 @@ class Evidence(models.Model):
         ('PASS', 'Pass'),
         ('FAIL', 'Fail'),
         ('ERROR', 'Error'),
+        ('RISK_ACCEPTED', 'Risk Accepted'),
     ]
 
     audit = models.ForeignKey(Audit, on_delete=models.CASCADE, related_name='evidence')
     question = models.ForeignKey(Question, on_delete=models.CASCADE)
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES)
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES)
     raw_data = models.JSONField(
         default=dict,
         help_text="Raw API response or logs proving the result. Contains actual evidence from external systems."
@@ -139,6 +141,8 @@ class AuditSnapshot(models.Model):
         null=True,
         help_text="User who triggered the snapshot"
     )
+    is_pinned = models.BooleanField(default=False, help_text="If True, this snapshot cannot be deleted by retention policies")
+    pdf_file = models.FileField(upload_to='audit_reports/', null=True, blank=True, help_text="Generated PDF report for this snapshot")
 
     class Meta:
         unique_together = ('audit', 'version')
@@ -201,3 +205,30 @@ class RiskAcceptanceException(models.Model):
 
     def __str__(self):
         return f"Exception for {self.check_id} on {self.resource_identifier or 'Global'} ({self.organization})"
+
+class PublicLink(models.Model):
+    token = models.CharField(
+        primary_key=True, 
+        max_length=64, 
+        default=uuid.uuid4, 
+        editable=False,
+        help_text="Secure random token for public access"
+    )
+    snapshot = models.ForeignKey(
+        AuditSnapshot, 
+        on_delete=models.CASCADE,
+        related_name='public_links',
+        help_text="The snapshot exposed by this link"
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    views_count = models.PositiveIntegerField(default=0)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True
+    )
+
+    def __str__(self):
+        return f"Public Link {self.token[:8]}... for {self.snapshot}"

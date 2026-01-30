@@ -329,11 +329,43 @@ class GithubCallbackView(APIView):
 
         logger.info(f"Integration {'created' if created else 'updated'} for Org {org.id}")
 
+        # --- MAGIC ONBOARDING BLOCK ---
+        # Automatically trigger an initial scan to eliminate "Blank Slate" syndrome.
+        # This aligns with the CRO directive for "Time-to-Value".
+        try:
+            # Check if there is an existing PENDING/RUNNING audit to avoid spamming
+            has_active_audit = Audit.objects.filter(
+                organization=org, 
+                status__in=['PENDING', 'RUNNING']
+            ).exists()
+            
+            audit_id = None
+            if not has_active_audit:
+                # Create and trigger audit
+                audit = Audit.objects.create(
+                    organization=org,
+                    triggered_by=request.user,
+                    status='PENDING'
+                )
+                run_audit_task.delay(str(audit.id))
+                audit_id = str(audit.id)
+                logger.info(f"Magic Onboarding: Auto-triggered audit {audit.id} for {org.name}")
+            else:
+                logger.info(f"Magic Onboarding: Audit already in progress for {org.name}, skipping auto-trigger.")
+                # user sees the running audit on dashboard
+                
+        except Exception as e:
+            logger.error(f"Magic Onboarding Trigger Failed: {e}")
+            # Don't fail the connection request just because audit trigger failed
+        # ------------------------------
+
         return Response({
             "status": "connected",
             "provider": "github",
             "account": gh_username,
-            "integration_id": integration.id
+            "integration_id": integration.id,
+            "scan_triggered": bool(audit_id),
+            "audit_id": audit_id
         })
 
 

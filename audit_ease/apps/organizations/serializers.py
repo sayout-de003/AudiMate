@@ -137,6 +137,7 @@ class OrganizationDetailSerializer(serializers.ModelSerializer):
     pending_invites_count = serializers.SerializerMethodField()
     is_owner = serializers.SerializerMethodField()
     is_admin = serializers.SerializerMethodField()
+    trial_end_date = serializers.SerializerMethodField()
 
     class Meta:
         model = Organization
@@ -153,6 +154,9 @@ class OrganizationDetailSerializer(serializers.ModelSerializer):
             'is_admin',
             'created_at',
             'updated_at',
+            'subscription_status',
+            'subscription_ends_at',
+            'trial_end_date',
         ]
         read_only_fields = [
             'id',
@@ -161,7 +165,16 @@ class OrganizationDetailSerializer(serializers.ModelSerializer):
             'members',
             'created_at',
             'updated_at',
+            'subscription_status',
+            'subscription_ends_at',
+            'trial_end_date',
         ]
+    
+    def get_trial_end_date(self, obj):
+        from datetime import timedelta
+        if obj.trial_start_date:
+            return obj.trial_start_date + timedelta(days=15)
+        return None
 
     def get_member_count(self, obj) -> int:
         """Get total member count."""

@@ -13,15 +13,16 @@ class AuditSerializer(serializers.ModelSerializer):
         allow_null=True,
         help_text="Email of user who triggered this audit"
     )
+    pass_rate = serializers.IntegerField(source='score', read_only=True)
     
     class Meta:
         model = Audit
         fields = [
             'id', 'organization', 'organization_name', 'status', 
             'triggered_by', 'triggered_by_email',
-            'created_at', 'completed_at'
+            'created_at', 'completed_at', 'score', 'pass_rate'
         ]
-        read_only_fields = ['id', 'organization', 'triggered_by', 'created_at', 'completed_at']
+        read_only_fields = ['id', 'organization', 'triggered_by', 'created_at', 'completed_at', 'score', 'pass_rate']
 
 class QuestionSerializer(serializers.ModelSerializer):
     class Meta:
